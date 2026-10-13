@@ -193,13 +193,21 @@ void quadgeneration::QMG(std::string input_tri, std::string output_quad, std::st
     //     quad = field.F_compact[i];
     //     Fer.push_back(quad);
     // }
-    // Optimizer::extract_patch(field.hierarchy, field.F_new, field.V_new, field.N_new, field.Q_new,
-    //                          field.Vset_new, field.O_compact_new, field.F_compact_new,
-    //                          field.V2E_compact_new, field.E2E_compact_new, field.mScale_new,
-    //                          field.diffs_new, field.diff_count_new, field.patch_compact,
-    //                          field.sharp_o_new, field.compact_sharp_constraints_new,
-    //                          field.boundary_o_new, field.compact_boundary_constraints_new);
-    // field.Outputpatch(output_patch.c_str(), output_txt.c_str());
+    Optimizer::extract_patch(field.hierarchy, field.F_new, field.V_new, field.N_new, field.Q_new,
+                             field.Vset_new, field.O_compact_new, field.F_compact_new,
+                             field.V2E_compact_new, field.E2E_compact_new, field.mScale_new,
+                             field.diffs_new, field.diff_count_new, field.patch_compact,
+                             field.sharp_o_new, field.compact_sharp_constraints_new,
+                             field.boundary_o_new, field.compact_boundary_constraints_new);
+    field.Outputpatch(output_patch.c_str(), output_txt.c_str());
+    // Previously disabled: Optimizer::extract_patch (optimizer.cpp) crashed with a
+    // heap-buffer-overflow read of `Inner_quad[i]` (optimizer.cpp:1960), because
+    // `Inner_quad` was pushed conditionally (only on a match, optimizer.cpp:~1900)
+    // while `patch`/`point` were pushed unconditionally for the same loop iteration,
+    // silently desyncing the three parallel vectors. Fixed by only committing
+    // patch/point/Inner_quad together, guarded on a match being found. Confirmed
+    // fixed via AddressSanitizer (3 consecutive clean runs on hookBase.obj). See
+    // Task1.md for the original diagnosis this superseded.
     // printf("finish...\n");
     //	field.LoopFace(2);
 }

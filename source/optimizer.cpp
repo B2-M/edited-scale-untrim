@@ -1886,6 +1886,8 @@ void Optimizer::extract_patch(
                         adj1 = single_patch[3][1];
                         adj2 = single_patch[2][single_patch[2].size() - 2];
                     }
+                    bool found_inner_quad = false;
+                    Vector4i matched_inner_quad;
                     for (int j = 0; j < start.size(); ++j) {
                         if (start[j] != p) continue;
                         for (int k = 0; k < F_inner[j].size(); ++k) {
@@ -1897,11 +1899,16 @@ void Optimizer::extract_patch(
                             if (find(F.begin(), F.end(), adj1) != F.end() &&
                                 find(F.begin(), F.end(), adj2) != F.end() &&
                                 find(F.begin(), F.end(), p) != F.end()) {
-                                Inner_quad.push_back(F_inner[j][k]);
+                                matched_inner_quad = F_inner[j][k];
+                                found_inner_quad = true;
                                 /*Qu = F_inner[j][k];*/
                             }
                         }
                     }
+                    // patch/point/Inner_quad must stay index-aligned (consumed later as
+                    // Inner_quad[i] for patch[i]/point[i]); skip this patch entirely if no
+                    // matching inner quad was found, rather than leaving Inner_quad short.
+                    if (!found_inner_quad) continue;
                     std::vector<std::vector<int>> Qkx;
                     if (r == 0) {
                         Qkx.push_back(single_patch[0]);
@@ -1944,6 +1951,7 @@ void Optimizer::extract_patch(
                         Qkx.push_back(single_patch[1]);
                     }
                     patch.push_back(Qkx);
+                    Inner_quad.push_back(matched_inner_quad);
                     point.push_back(p);
                     number_patchline[i] = 0;
                     number_patchline[a] = 0;
