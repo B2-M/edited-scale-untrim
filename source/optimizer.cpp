@@ -7437,7 +7437,10 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
     std::vector<int> n_c;
     std::vector<std::vector<int>> n_c_p(relative_point.size());
     for (int i = need_collapse[n] + 1; i < relative_point.size(); ++i) {
-        if (relative_point[i].size() == 1) continue;
+        // r_p keeps empty placeholder entries (for layers with no patches, pushed
+        // above) to stay index-aligned with layer; skip those too, not just size 1,
+        // since relative_point[i][0] below is otherwise an out-of-bounds read.
+        if (relative_point[i].size() == 0 || relative_point[i].size() == 1) continue;
         int v1 = relative_point[i][0][0];
         int v2 = relative_point[i][0][1];
         int v3 = relative_point[i][0][2];
@@ -8994,17 +8997,18 @@ void Optimizer::collapse_boundary(std::vector<Vector3d>& O_compact,
     }
     std::cout << "finish"
               << "\n";
+    // relative_point/layer must stay the same length and index-aligned (the caller
+    // indexes both by the same i); drop an entry only when BOTH sides agree it is
+    // empty, rather than filtering each independently, which could otherwise leave
+    // them different lengths and cause the caller to read past layer's new size.
     std::vector<std::vector<std::vector<int>>> temp;
     std::vector<std::vector<int>> temp1;
-    for (int i = 0; i < temp_relative_point.size(); ++i) {
-        if (temp_relative_point[i].size() == 0) continue;
+    for (int i = 0; i < temp_relative_point.size() && i < temp_layer.size(); ++i) {
+        if (temp_relative_point[i].size() == 0 && temp_layer[i].size() == 0) continue;
         temp.push_back(temp_relative_point[i]);
-    }
-    relative_point = temp;
-    for (int i = 0; i < temp_layer.size(); ++i) {
-        if (temp_layer[i].size() == 0) continue;
         temp1.push_back(temp_layer[i]);
     }
+    relative_point = temp;
     layer = temp1;
 }
 void Optimizer::optimize_positions_fixed(
