@@ -2918,6 +2918,14 @@ void Optimizer::size_three(std::vector<std::vector<std::vector<int>>>& patch_com
                 int v4 = -1;
                 for (int k = 0; k < collapse_patch.size(); ++k) {
                     if (k == i) continue;
+                    // A chain of thin patches can close on itself (e.g. a ring around
+                    // a boundary singularity); without this check it would revisit a
+                    // patch already in one_layer via a different edge pair (only the
+                    // specific edge is marked visited via collapse_patch_edge, not the
+                    // whole patch), producing a duplicate entry that breaks every
+                    // downstream assumption that a patch index appears at most once
+                    // across layer. Stop the chain here instead.
+                    if (find(one_layer.begin(), one_layer.end(), k) != one_layer.end()) continue;
                     for (int p = 0; p < collapse_patch[k].size(); ++p) {
                         if (collapse_patch_edge[k][p] == -1) continue;
                         if (collapse_patch[k][p].size() > 5) continue;
@@ -6802,6 +6810,11 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
                     break;
                 }
             }
+            // No matching boundary found for this patch (e.g. pa's edges were
+            // already renumbered/collapsed by an earlier step) - edge1 stays
+            // empty and edge1[0] below would be an out-of-bounds read. Nothing
+            // correct can be computed for this chain step either way, so skip it.
+            if (edge1.empty()) continue;
             int inner_vertex;
             if (singularity_vertex == edge1[0]) {
                 inner_vertex = edge1[edge1.size() - 1];
