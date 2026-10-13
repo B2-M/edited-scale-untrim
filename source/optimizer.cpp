@@ -8887,15 +8887,40 @@ void Optimizer::collapse_boundary(std::vector<Vector3d>& O_compact,
     std::vector<int> position;
     std::vector<int> renew(O_compact.size(), -1);
     std::vector<int> delete_patch;
+    // Collapse every non-conflicting chain in layer, not just index 2 - each
+    // one_layer entry already represents a thin (collapse_patch[...].size() <= 5)
+    // strip by construction (see the layer-building loop above extract_patch's
+    // call into this function), so there is nothing specific to index 2; a fixed
+    // index was an unwarranted assumption that silently no-ops whenever the
+    // collapsible chain lands elsewhere (e.g. layer.size() == 1), leaving
+    // degenerate sliver patches in the output. However, different chains can
+    // share a patch index (collapse_patch_edge only marks the specific edge
+    // traced, not every edge of a patch), so collapsing all chains in the same
+    // call can over-collapse; claim each chain's patches up front and skip any
+    // later chain that would double-claim one, so only a maximal
+    // non-conflicting set is collapsed per call (remaining chains, if any,
+    // collapse on a subsequent call once extract_patch's loop re-derives layer).
+    std::vector<bool> claimed(collapse_patch.size(), false);
+    std::vector<bool> chain_collapsed(layer.size(), false);
     for (int i = 0; i < layer.size(); ++i) {
-        cout << layer[i].size() << "\n";
-        if (i != 2) continue;
+        bool conflicts = false;
+        for (int j = 0; j < layer[i].size(); ++j) {
+            if (layer[i][j] >= 0 && layer[i][j] < (int)claimed.size() && claimed[layer[i][j]]) {
+                conflicts = true;
+                break;
+            }
+        }
+        if (conflicts) continue;
+        chain_collapsed[i] = true;
         for (int j = 0; j < layer[i].size(); ++j) {
             delete_patch.push_back(layer[i][j]);
+            if (layer[i][j] >= 0 && layer[i][j] < (int)claimed.size()) {
+                claimed[layer[i][j]] = true;
+            }
         }
     }
     for (int i = 0; i < relative_point.size(); ++i) {
-        if (i != 2) continue;
+        if (!chain_collapsed[i]) continue;
         for (int j = 0; j < relative_point[i].size(); ++j) {
             int v1, v2;
             v1 = relative_point[i][j][3];
@@ -8917,6 +8942,19 @@ void Optimizer::collapse_boundary(std::vector<Vector3d>& O_compact,
                 if (renew[o2] == -1) {
                     renew[o2] = o1;
                 }
+            }
+        }
+    }
+    // Remap all_singularity through renew, same as sin_fft/sin_ttt/sin_ft do for
+    // their own vertex merges - otherwise all_singularity keeps referring to
+    // vertex ids that no longer exist (or now mean something else) once this
+    // collapse runs, causing out-of-bounds/misdirected reads in later calls that
+    // still index O_compact/renew by old all_singularity entries.
+    for (int i = 0; i < (int)renew.size(); ++i) {
+        if (renew[i] == -1) continue;
+        for (int j = 0; j < (int)all_singularity.size(); ++j) {
+            if (all_singularity[j] == i) {
+                all_singularity[j] = renew[i];
             }
         }
     }
