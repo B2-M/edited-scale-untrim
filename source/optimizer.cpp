@@ -6764,6 +6764,32 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
         }
     }
     int number = need_collapse[n];
+    // A chain that closes into a loop can have two distinct, correctly-detected
+    // transition pairs in need_collapse_part[number] that meet at a shared seam
+    // patch (see the matching note at opq_pair_count below, in the Vect-building
+    // section of this function, for the full explanation and a concrete repro).
+    // That seam patch sits at a pair BOUNDARY (the begin of one pair, the end of
+    // the other) by construction, since the segmentation walks forward looking
+    // for singular/non-singular transitions and a patch straddling two
+    // singularities naturally lands at the edge of both detected ranges, never
+    // their interior. number_seen_in_pair (built here) marks which patch
+    // indices are such a seam patch - touched by more than one of this chain's
+    // own pairs - so the s-loop below (search for is_seam_patch) can skip
+    // writing new O_compact positions for it on every encounter, instead of
+    // forcing it through position-interpolation math that assumes every patch
+    // in a pair is one slice of that pair's own single continuous boundary
+    // strip, an assumption the seam patch does not satisfy (see the full
+    // explanation and empirical verification at is_seam_patch's use below).
+    std::vector<int> number_seen_in_pair(assist_patch.size(), 0);
+    for (int i = 0; i < need_collapse_part[number].size(); ++i) {
+        if (i % 2 == 1) continue;
+        int begin = need_collapse_part[number][i];
+        int end = need_collapse_part[number][i + 1];
+        for (int k = begin; k < end + 1; ++k) {
+            int pa = layer[number][k];
+            if (pa >= 0 && pa < (int)number_seen_in_pair.size()) number_seen_in_pair[pa] += 1;
+        }
+    }
     for (int i = 0; i < need_collapse_part[number].size(); ++i) {
         if (i % 2 == 1) continue;
         int begin = need_collapse_part[number][i];
@@ -6785,6 +6811,8 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
         }
         for (int s = begin; s < end + 1; ++s) {
             int pa = layer[number][s];
+            bool is_seam_patch =
+                pa >= 0 && pa < (int)number_seen_in_pair.size() && number_seen_in_pair[pa] > 1;
             std::vector<int> edge1, edge2;
             int singularity_vertex;
             int v1, v2, v3, v4;
@@ -6815,43 +6843,79 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
             // empty and edge1[0] below would be an out-of-bounds read. Nothing
             // correct can be computed for this chain step either way, so skip it.
             if (edge1.empty()) continue;
+            // Shared seam patch (see opq_pair_count's note where it is first
+            // computed, in the Vect-building section below, for the full
+            // explanation and a concrete repro): this patch is not actually
+            // part of a single continuous boundary strip being subdivided - it
+            // is the unrelated patch where two distinct, independently-detected
+            // transition pairs of this same closed-loop chain happen to meet.
+            // Running it through the position-interpolation math below
+            // (O_compact[o]=O_compact[edge1[j]]+(b/total_size)*direction, which
+            // assumes pa's own edge length is one slice of the WHOLE pair's
+            // combined length) collapses its two real, distinct corners toward
+            // nearly the same point, because total_size sums in every OTHER
+            // patch of the pair too, making pa's own slice of [0,1] tiny
+            // relative to its true edge length - producing a near-zero-area
+            // sliver patch even though collapse_patch[pa] itself is a normal,
+            // non-degenerate quad (verified empirically: O_compact for this
+            // patch's four corners, read at this function's very entry, before
+            // any write in this function has run, already equals the original
+            // quad-mesh coordinates exactly - nothing upstream corrupted them;
+            // this interpolation loop is the only place that does). Fix: still
+            // derive inner_vertex/inner_vertex_ from edge1/edge2 below (needed
+            // so the NEXT patch in this pair, if any, gets a correct
+            // singularity_vertex handoff) and still advance b by the number of
+            // positions this patch would have contributed (needed so a LATER
+            // patch in this pair keeps the same b/total_size fractions it
+            // would have had - this only matters when the seam patch is at
+            // begin, since nothing follows it in this pair when it is at end),
+            // but skip writing any new O_compact/renew value for it, leaving
+            // its already-correct original coordinates untouched.
             int inner_vertex;
             if (singularity_vertex == edge1[0]) {
                 inner_vertex = edge1[edge1.size() - 1];
                 inner_vertex_ = edge1[edge1.size() - 1];
-                for (int j = 0; j < edge1.size(); ++j) {
-                    if (s != begin && j == 0) continue;
-                    Vector3d direction =
-                        O_compact[edge2[edge2.size() - 1 - j]] - O_compact[edge1[j]];
-                    Vector3d position =
-                        O_compact[edge1[j]] + (double)b * direction / (double)total_size;
-                    b += 1;
-                    int o1 = edge1[j];
-                    int o2 = edge2[edge2.size() - 1 - j];
-                    if (renew[o2] == -1) {
-                        renew[o2] = o1;
+                if (is_seam_patch) {
+                    b += (int)edge1.size() - (s == begin ? 0 : 1);
+                } else {
+                    for (int j = 0; j < edge1.size(); ++j) {
+                        if (s != begin && j == 0) continue;
+                        Vector3d direction =
+                            O_compact[edge2[edge2.size() - 1 - j]] - O_compact[edge1[j]];
+                        Vector3d position =
+                            O_compact[edge1[j]] + (double)b * direction / (double)total_size;
+                        b += 1;
+                        int o1 = edge1[j];
+                        int o2 = edge2[edge2.size() - 1 - j];
+                        if (renew[o2] == -1) {
+                            renew[o2] = o1;
+                        }
+                        O_compact[o2] = position;
+                        O_compact[o1] = position;
                     }
-                    O_compact[o2] = position;
-                    O_compact[o1] = position;
                 }
             } else {
                 singularity_vertex = edge1[0];
                 inner_vertex = edge1[edge1.size() - 1];
                 inner_vertex_ = edge2[0];
-                for (int j = 0; j < edge2.size(); ++j) {
-                    if (s != begin && j == 0) continue;
-                    Vector3d direction =
-                        O_compact[edge1[j]] - O_compact[edge2[edge2.size() - 1 - j]];
-                    Vector3d position = O_compact[edge2[edge2.size() - 1 - j]] +
-                                        (double)b * direction / (double)total_size;
-                    b += 1;
-                    int o1 = edge2[edge2.size() - 1 - j];
-                    int o2 = edge1[j];
-                    if (renew[o2] == -1) {
-                        renew[o2] = o1;
+                if (is_seam_patch) {
+                    b += (int)edge2.size() - (s == begin ? 0 : 1);
+                } else {
+                    for (int j = 0; j < edge2.size(); ++j) {
+                        if (s != begin && j == 0) continue;
+                        Vector3d direction =
+                            O_compact[edge1[j]] - O_compact[edge2[edge2.size() - 1 - j]];
+                        Vector3d position = O_compact[edge2[edge2.size() - 1 - j]] +
+                                            (double)b * direction / (double)total_size;
+                        b += 1;
+                        int o1 = edge2[edge2.size() - 1 - j];
+                        int o2 = edge1[j];
+                        if (renew[o2] == -1) {
+                            renew[o2] = o1;
+                        }
+                        O_compact[o2] = position;
+                        O_compact[o1] = position;
                     }
-                    O_compact[o2] = position;
-                    O_compact[o1] = position;
                 }
             }
         }
@@ -7243,12 +7307,48 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
         Vect.push_back(relative_double[i]);
     }
     int opq = need_collapse[n];
+    // A chain that closes into a loop (relative_point[opq].front()[0] ==
+    // relative_point[opq].back()[3]) can produce two distinct, correctly-detected
+    // transition pairs in need_collapse_part[opq] that both touch the same patch
+    // index sitting right at the loop's seam (e.g. chain 0 on a disc mesh at
+    // magnitude_factor 1.4: pairs (1,4) and (5,8) in layer[opq]={2 3 16 8 6 5 10
+    // 14 3 1} both include index 1/8 -> patch 3). double_following/can (built
+    // from following_collapse, the segments OUTSIDE every pair) only catches
+    // duplicates shared BETWEEN different chains, never a duplicate shared
+    // between two pairs of the SAME chain's own need_collapse_part, so such a
+    // seam patch never gets a replacement built into new_patch, yet still gets
+    // pushed into Vect by every pair that touches it - once excluded there, it
+    // is dropped from patch_compact below (matrix) with nothing to replace it,
+    // a "silently dropped quad-mesh face" / island in the final decomposition.
+    // Fix, at the exclusion point: first count how many of opq's own pairs
+    // touch each patch index; a patch touched by more than one pair is a seam
+    // patch like this and must NOT be pushed into Vect at all (on any
+    // occurrence), so it survives into matrix via its one surviving
+    // assist_patch[i]/patch_compact[i] entry (the i-indexed loop a few lines
+    // down) instead of being dropped with nothing to replace it. Its own
+    // vertices were already correctly collapsed in-place by the (begin,end)
+    // processing loop above (O_compact writes, not renew[]), so no further
+    // vertex-position fix-up is needed here, only keeping the patch itself.
+    std::vector<int> opq_pair_count(assist_patch.size(), 0);
     for (int i = 0; i < need_collapse_part[opq].size(); ++i) {
         if (i % 2 == 1) continue;
         int begin = need_collapse_part[opq][i];
         int end = need_collapse_part[opq][i + 1];
         for (int j = begin; j < end + 1; ++j) {
-            Vect.push_back(layer[opq][j]);
+            int pa = layer[opq][j];
+            if (pa >= 0 && pa < (int)opq_pair_count.size()) {
+                opq_pair_count[pa] += 1;
+            }
+        }
+    }
+    for (int i = 0; i < need_collapse_part[opq].size(); ++i) {
+        if (i % 2 == 1) continue;
+        int begin = need_collapse_part[opq][i];
+        int end = need_collapse_part[opq][i + 1];
+        for (int j = begin; j < end + 1; ++j) {
+            int pa = layer[opq][j];
+            if (pa >= 0 && pa < (int)opq_pair_count.size() && opq_pair_count[pa] > 1) continue;
+            Vect.push_back(pa);
         }
     }
     /*for (int i = 0; i < delete_patch.size(); ++i) {
