@@ -7,6 +7,7 @@ option(BUILD_GUROBI "Enable GUROBI for comparison ONLY" OFF)
 option(BUILD_OPENMP "Enable support for OpenMP" OFF)
 option(BUILD_TBB "Enable support for TBB" OFF)
 option(BUILD_FREE_LICENSE "Only use libraries with permissive licenses" OFF)
+option(BUILD_ISLAND_TESTS "Build Optimizer::extract_patch island-coverage regression tests (fetches Catch2)" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 set(Boost_USE_STATIC_LIBS ON)
@@ -169,8 +170,13 @@ else()
     )
 endif()
 
+if(BUILD_ISLAND_TESTS)
+    enable_testing()
+    add_subdirectory(test)
+endif(BUILD_ISLAND_TESTS)
+
 # Manually set the installation path here
-# set(CMAKE_INSTALL_PREFIX 
+# set(CMAKE_INSTALL_PREFIX
 #     "/Users/xiaodongwei/Documents/projects/quadriflow/build/release")
 
 # install(TARGETS ${CMAKE_PROJECT_NAME} DESTINATION lib)
