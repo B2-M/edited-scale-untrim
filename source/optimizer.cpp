@@ -6542,42 +6542,39 @@ void Optimizer::match_patch(int i, int j, int v, std::vector<int>& edge_collapse
         v1 = v2;
         v2 = temp;
     }
-    if (collapse_patch[v][0].size() > collapse_patch[v][1].size()) {
-        if (collapse_patch[v][0][0] == v1 ||
-            collapse_patch[v][0][collapse_patch[v][0].size() - 1] == v1) {
-            no_need_edge = collapse_patch[v][0];
-            need_collapse_edge = collapse_patch[v][2];
+    // Find which of v's 4 sides IS the matched boundary edge (v1,v2) exactly
+    // (both endpoints, not just one) and collapse its opposite side onto it.
+    // The previous logic branched on comparing side-0 vs side-1 length and
+    // then searched only that guessed pair {0,2} or {1,3} for a single
+    // endpoint matching v1 - when the true boundary edge actually belongs to
+    // the OTHER pair, but one of its endpoints happens to coincide with an
+    // endpoint of a side in the guessed pair (sharing a corner vertex, as
+    // any two adjacent sides of a quad do), it would spuriously match and
+    // collapse the wrong pair of sides entirely. Confirmed empirically on a
+    // disc mesh at magnitude_factor 1.6 (OMP_NUM_THREADS=1, matching the
+    // frozen test fixture exactly): patch 4's sides are
+    // 21->101(len3)/101->114(len2)/114->111(len3)/111->21(len2); the actual
+    // boundary edge is v1=101,v2=114 (side 1, len 2), but side 0's length
+    // (3) > side 1's length (2) sent it down the "search pair {0,2}" branch,
+    // where side 0 (21->101) matches v1=101 at its OWN endpoint (purely
+    // because side 0 and side 1 share corner vertex 101) - collapsing the
+    // long pair {0,2} instead of the short pair {1,3} that v1,v2 actually
+    // belong to, folding the patch across the wrong axis and leaving a gap.
+    // Searching all 4 sides for a full (v1,v2) edge match, as the
+    // equal-length case already did, picks the correct pair regardless of
+    // side lengths.
+    for (int k = 0; k < collapse_patch[v].size(); ++k) {
+        if (collapse_patch[v][k][0] == v1 &&
+            collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v2) {
+            no_need_edge = collapse_patch[v][k];
+            need_collapse_edge = collapse_patch[v][(k + 2) % 4];
+            break;
         }
-        if (collapse_patch[v][2][0] == v1 ||
-            collapse_patch[v][2][collapse_patch[v][2].size() - 1] == v1) {
-            no_need_edge = collapse_patch[v][2];
-            need_collapse_edge = collapse_patch[v][0];
-        }
-    } else if (collapse_patch[v][0].size() < collapse_patch[v][1].size()) {
-        if (collapse_patch[v][1][0] == v1 ||
-            collapse_patch[v][1][collapse_patch[v][1].size() - 1] == v1) {
-            no_need_edge = collapse_patch[v][1];
-            need_collapse_edge = collapse_patch[v][3];
-        }
-        if (collapse_patch[v][3][0] == v1 ||
-            collapse_patch[v][3][collapse_patch[v][3].size() - 1] == v1) {
-            no_need_edge = collapse_patch[v][3];
-            need_collapse_edge = collapse_patch[v][1];
-        }
-    } else {
-        for (int k = 0; k < collapse_patch[v].size(); ++k) {
-            if (collapse_patch[v][k][0] == v1 &&
-                collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v2) {
-                no_need_edge = collapse_patch[v][k];
-                need_collapse_edge = collapse_patch[v][(k + 2) % 4];
-                break;
-            }
-            if (collapse_patch[v][k][0] == v2 &&
-                collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v1) {
-                no_need_edge = collapse_patch[v][k];
-                need_collapse_edge = collapse_patch[v][(k + 2) % 4];
-                break;
-            }
+        if (collapse_patch[v][k][0] == v2 &&
+            collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v1) {
+            no_need_edge = collapse_patch[v][k];
+            need_collapse_edge = collapse_patch[v][(k + 2) % 4];
+            break;
         }
     }
     for (int i = 0; i < no_need_edge.size(); ++i) {

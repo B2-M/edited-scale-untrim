@@ -112,34 +112,36 @@ TEST_CASE("disc magnitude_factor 1.4 (post-fix) has a clean, fully-covering deco
     CHECK(std::fabs(result.area_diff_fraction) < kCleanAreaDiffBound);
 }
 
-TEST_CASE("disc magnitude_factor 1.6 still has a known, NOT YET FIXED island", "[island_coverage][known_issue]") {
-    // This is an XFAIL-shaped test: it documents and pins the CURRENT buggy
-    // behavior so a future, unrelated change doesn't silently alter it
-    // without notice, and so fixing it is a visible, celebrated event (this
-    // test starts failing/changing shape) rather than something that has to
-    // be independently remembered.
-    //
-    // Root cause (traced, not yet fixed - see CLAUDE.md): a different
-    // trigger than 1.4's. An open (non-closed-loop) chain's two boundary-end
-    // patches (outside both of its own transition pairs) get pushed into
-    // sin_mismatching's exclusion list (Vect) unconditionally via
-    // following_collapse, but a replacement is only ever built for a
-    // following_collapse entry that also repeats across a DIFFERENT chain
-    // (double_following/can). With only one chain present in this run,
-    // nothing repeats, no replacement is built, and both patches - plus the
-    // two patches collapsed in the chain's own pairs - vanish with nothing
-    // to replace them.
-    //
-    // When this gets fixed: change the CHECK(result.islands.size() == 4) to
-    // CHECK(result.islands.empty()), regenerate this fixture against the
-    // fixed binary, move this test's tag from [known_issue] to
-    // [regression], and update CLAUDE.md's "Known open issue" section.
+TEST_CASE("disc magnitude_factor 1.6 has a clean, fully-covering decomposition",
+          "[island_coverage][regression]") {
+    // Documents the fix to Optimizer::match_patch's edge-pair selection: it
+    // picked which pair of a patch's 4 sides to collapse by comparing side-0
+    // vs side-1 length, then searching only the implied pair ({0,2} or
+    // {1,3}) for a single endpoint matching the known boundary vertex v1 -
+    // but two adjacent sides of a quad always share a corner, so when the
+    // true boundary edge (v1,v2) actually belonged to the OTHER pair, v1
+    // could still spuriously match an endpoint of a side in the wrong pair,
+    // collapsing it instead. Confirmed directly on this fixture (reproduced
+    // with OMP_NUM_THREADS=1 for determinism - the field solver's threaded
+    // stages are not otherwise guaranteed reproducible): patch 4's sides are
+    // 21->101(len3)/101->114(len2)/114->111(len3)/111->21(len2); the real
+    // boundary edge is v1=101,v2=114 (side 1, len 2), but side 0's length
+    // (3) > side 1's length (2) sent the search into pair {0,2}, where side
+    // 0 (21->101) matched v1=101 purely because it shares that corner with
+    // side 1 - collapsing the long pair instead of the short one and
+    // leaving a gap. Fixed by always searching all 4 sides for a full
+    // (v1,v2) edge match (both endpoints), as the pre-existing equal-length
+    // branch already did, instead of guessing the pair from side lengths.
+    // This must stay 0 islands; n_patch_faces/area_diff_fraction are
+    // unchanged from the pre-fix fixture (96/~2.3%->96/~0.6%) because the
+    // same 5 patches survive, just with patch 4 now correctly shaped instead
+    // of leaving a gap.
     auto result = island_check::checkCoverage(fixturePath("disc_mf1.6", "quad.vtk"), patchPaths("disc_mf1.6", 5));
 
     CHECK(result.n_quad_faces == 171);
     CHECK(result.n_patch_faces == 96);
-    CHECK(result.islands.size() == 4);
-    CHECK(result.area_diff_fraction > 0.02);  // ~2.3% observed; well outside clean noise
+    CHECK(result.islands.empty());
+    CHECK(std::fabs(result.area_diff_fraction) < kCleanAreaDiffBound);
 }
 
 TEST_CASE("disc magnitude_factor 1.8 has a clean, fully-covering decomposition", "[island_coverage]") {
