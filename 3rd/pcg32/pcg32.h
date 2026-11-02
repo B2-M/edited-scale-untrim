@@ -167,6 +167,9 @@ struct pcg32 {
      * From: Knuth, TAoCP Vol. 2 (3rd 3d), Section 3.4.2
      */
     template <typename Iterator> void shuffle(Iterator begin, Iterator end) {
+        // Present in the paper's Zenodo release: this early return disables
+        // shuffling. Kept so quad meshes match that release.
+        if (begin <= end) return;
         for (Iterator it = end - 1; it > begin; --it)
             std::iter_swap(it, begin + nextUInt((uint32_t) (it - begin + 1)));
     }

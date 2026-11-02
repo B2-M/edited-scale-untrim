@@ -152,21 +152,6 @@ void quadgeneration::QMG(std::string input_tri, std::string output_quad, std::st
        field.OutputMesh(output_obj.c_str());
     }
 
-    char userInput;
-    std::cout << "please check the quad mesh is correct or not"
-              << "\n";
-    std::cout << "if it is correct  please cin Y/y"
-              << "\n";
-    std::cout << "if wrong  please change the face_num "
-              << "\n";
-    std::cin >> userInput;
-
-    if (userInput == 'Y' || userInput == 'y') {
-        std::cout << "Continuing...." << std::endl;
-    } else {
-        std::cout << "Stopping the program." << std::endl;
-        exit(EXIT_SUCCESS);
-    }
     Ver = field.O_compact;
     Vector4i quad;
     for (int i = 0; i < field.F_compact.size(); ++i) {

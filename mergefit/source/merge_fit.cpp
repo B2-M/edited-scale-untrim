@@ -17,6 +17,7 @@ MergeFit::MergeFit()
     fix_hole = 1;
 
     preserve_sharp = 1;
+    preserve_sharp_cli = -1;  // -1 = not set via CLI
     preserve_boundary = 1;
     minimum_cost = 1;
     adaptive_scale = 1;
@@ -99,6 +100,11 @@ void MergeFit::set_surface_degree(int deg_in)
     degree = deg_in;
 }
 
+void MergeFit::set_preserve_sharp(int val)
+{
+    preserve_sharp_cli = val;
+}
+
 void MergeFit::read_config_file(const std::string &fn)
 {
     ifstream fin;
@@ -143,6 +149,11 @@ void MergeFit::read_config_file(const std::string &fn)
                 fin >> run_from;
             else if (parameter_type == "area_tolerance:")
                 fin >> area_tol;
+            else if (parameter_type == "preserve_sharp:")
+            {
+                fin >> temp;
+                preserve_sharp = (temp == "yes" || temp == "1") ? 1 : 0;
+            }
             else if (parameter_type == "collapsing_layer:")
                 fin >> collapsing_layer;
             else if (parameter_type == "magnitude:")
@@ -270,6 +281,9 @@ int MergeFit::write_CAD_to_step(const std::string &surf_pat, const std::string &
 int MergeFit::run(const std::string& cad_file_in, const std::string& cad_file_out, const std::string& config_file)
 {
     read_config_file(config_file);
+    // CLI flag overrides config file value if set
+    if (preserve_sharp_cli >= 0)
+        preserve_sharp = preserve_sharp_cli;
 
     // temporary files
     const std::string tri_obj = temp_dir + "tri.obj";
@@ -301,15 +315,15 @@ int MergeFit::run(const std::string& cad_file_in, const std::string& cad_file_ou
     }
     else if (run_from == 2)
     {
-        if (!file_exist(tri_fix))
+        if (!file_exist(cad_file_in))
         {
             std::cerr << "The fixed triangle mesh does not exist!\n";
             std::cerr << "Set the parameter <run_from> as 0 and rerun the program.\n";
             return 1;
         }
-        generate_quad_mesh_from_tri_mesh(tri_fix, patch_info);
-        fit_NURBS_from_quad_patch(patch_info, surf);
-        write_CAD_to_step(surf_pat, cad_file_out);
+        // The caller supplies the mesh and only needs the quad mesh and patches;
+        // NURBS fitting and STEP export are available through run_from 3.
+        generate_quad_mesh_from_tri_mesh(cad_file_in, patch_info);
     }
     else if (run_from == 3)
     {

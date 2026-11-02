@@ -24,6 +24,9 @@ public:
     void set_local_layer(int n_layer);
     void set_smooth_iteration(int n_itr);
     void set_surface_degree(int deg_in);
+    // Set to 0 or 1 to override the preserve_sharp value from the config file.
+    // Call before run(). Default (-1) means use the config file value.
+    void set_preserve_sharp(int val);
 
     void read_config_file(const std::string& fn);
     bool file_exist(const std::string& fn) const;
@@ -42,6 +45,7 @@ private:
     int local_layer;
     int smooth_iter;
     int fix_hole;
+    int preserve_sharp_cli;  // CLI override: -1 = unset (use config), 0/1 = override
 
     int preserve_sharp;
     int preserve_boundary;

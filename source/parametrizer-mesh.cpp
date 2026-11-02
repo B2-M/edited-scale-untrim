@@ -218,7 +218,11 @@ void Parametrizer::Initialize(double faces, double angle, int magnitude, int qua
             Vector3d e2 = V.col(i3) - V.col(i2);
             double cos = e1.dot(e2) / (sqrt(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]) *
                                        sqrt(e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2]));
-            if (cos > -0.5) {
+            // Threshold: -cos(angle) detects boundary corners where the exterior
+            // turning angle >= angle degrees. The default angle=60 reproduces
+            // the original hard-coded -0.5 (= -cos(60 deg)).
+            double boundary_cos_thres = -std::cos(angle / 180.0 * 3.141592654);
+            if (cos > boundary_cos_thres) {
                 Corner.push_back(i2);
                 CornerP.push_back(V.col(i2)[0]);
                 CornerP.push_back(V.col(i2)[1]);

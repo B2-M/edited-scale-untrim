@@ -48,7 +48,7 @@ void load::Loader(std::string filename) {
 
 				if (readingpos) {
 
-					if (sscanf_s(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
+					if (sscanf(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
 						V.push_back(x);
 						V.push_back(y);
 						V.push_back(z);
@@ -57,7 +57,7 @@ void load::Loader(std::string filename) {
 
 				else if (readingtri) {
 
-					if (sscanf_s(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
+					if (sscanf(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
 						F.push_back(v1);
 						F.push_back(v2);
 						F.push_back(v3);
@@ -178,7 +178,7 @@ void load::Loader_errortri(string filename, int p1, int p2) {
 
 				if (readingpos) {
 
-					if (sscanf_s(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
+					if (sscanf(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
 						V.push_back(x);
 						V.push_back(y);
 						V.push_back(z);
@@ -187,7 +187,7 @@ void load::Loader_errortri(string filename, int p1, int p2) {
 
 				else if (readingtri) {
 
-					if (sscanf_s(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
+					if (sscanf(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
 						F.push_back(v1);
 						F.push_back(v2);
 						F.push_back(v3);
@@ -334,7 +334,7 @@ void load::converse(std::string filename, std::string filename1) {
 
 				if (readingpos) {
 
-					if (sscanf_s(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
+					if (sscanf(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
 						V.push_back(x);
 						V.push_back(y);
 						V.push_back(z);
@@ -343,7 +343,7 @@ void load::converse(std::string filename, std::string filename1) {
 
 				else if (readingtri) {
 
-					if (sscanf_s(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
+					if (sscanf(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
 						F.push_back(v1);
 						F.push_back(v2);
 						F.push_back(v3);

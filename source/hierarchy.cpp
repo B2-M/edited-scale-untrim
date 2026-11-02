@@ -12,7 +12,7 @@
 #include "field-math.hpp"
 #include <queue>
 #include "localsat.hpp"
-#include "pcg32/pcg32.h"
+#include "pcg32.h"
 #include <iostream>
 #include <fstream>
 #include <string>
