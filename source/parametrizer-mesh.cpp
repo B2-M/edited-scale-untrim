@@ -11,6 +11,7 @@
 #include "loader.hpp"
 #include "merge-vertex.hpp"
 #include "parametrizer.hpp"
+#include <stdexcept>
 #include "subdivide.hpp"
 #include "dedge.hpp"
 #include <queue>
@@ -841,6 +842,10 @@ void Parametrizer::Outputpatch(std::string file_name, std::string txt_name) {
             }
         }
         for (int j = 0; j < patch_compact[i].size() - 1; ++j) {
+            // A patch must be a rectangular grid of vertices.
+            if (patch_compact[i][j + 1].size() != patch_compact[i][j].size()) {
+                throw std::runtime_error("Outputpatch: patch is not a rectangular grid");
+            }
             for (int k = 0; k < patch_compact[i][j].size() - 1; ++k) {
                 Vector4i element;
                 element[0] = sequence[patch_compact[i][j][k]];

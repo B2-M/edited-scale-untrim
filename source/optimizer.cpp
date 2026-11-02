@@ -5,6 +5,9 @@
 
 
 #include "optimizer.hpp"
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
 
 #include <Eigen/Sparse>
 #include <cmath>
@@ -28,6 +31,21 @@ using namespace std;
 
 
 namespace qflow {
+
+namespace {
+// Upper bound on the steps of one chain walk in extract_patch. A valid chain visits
+// each vertex or face a bounded number of times; when the mesh breaks an assumption
+// (for example a boundary chain that never closes) these loops would otherwise spin
+// forever, some of them allocating until the machine runs out of memory.
+int64_t chain_step_limit = std::numeric_limits<int64_t>::max();
+
+void check_chain_steps(int64_t steps) {
+    if (steps > chain_step_limit) {
+        throw std::runtime_error("extract_patch: chain walk did not terminate");
+    }
+}
+}  // namespace
+
 
 #ifdef WITH_CUDA
 #    include <cuda_runtime.h>
@@ -572,6 +590,7 @@ void Optimizer::extract_patch(
     std::map<int, std::pair<Vector3d, Vector3d>>& compact_sharp_constraints,
     std::vector<int>& boundary_o,
     std::map<int, std::pair<Vector3d, Vector3d>>& compact_boundary_constraints, int collapsing_layer) {
+    chain_step_limit = 8 * int64_t(O_compact.size() + F_compact.size()) + 1024;
     auto& cornerQ = mRes.mcornerQ;
 
     std::vector<Vector4i> F_compact1;
@@ -768,7 +787,9 @@ void Optimizer::extract_patch(
             }
             int v1 = singularity[i];
             int v2;
+            int64_t chain_steps = 0;
             do {
+                check_chain_steps(++chain_steps);
                 int next_v;
                 for (int j = 0; j < VtoF[v].size(); ++j) {
                     int x = VtoF[v][j];
@@ -872,8 +893,8 @@ void Optimizer::extract_patch(
             if (boundary_o[adj_boundary_singularity[i][j]]) {
                 int b = boundary_singularity[i];
                 int vv = adj_boundary_singularity[i][j];
-                int p1 = positions.at(b)[0];
-                int p2 = positions.at(b)[1];
+                int p1 = positions.at(b).at(0);
+                int p2 = positions.at(b).at(1);
                 int adj1, adj2;
                 if (p1 % 2 == 0) {
                     adj1 = boundaryvertex[p1 + 1];
@@ -932,7 +953,9 @@ void Optimizer::extract_patch(
             }
             int v1 = boundary_singularity[i];
             int v2;
+            int64_t chain_steps = 0;
             do {
+                check_chain_steps(++chain_steps);
                 int next_v;
                 for (int j = 0; j < VtoF[v].size(); ++j) {
                     int x = VtoF[v][j];
@@ -1052,7 +1075,9 @@ void Optimizer::extract_patch(
             int next_v = v;
             v = v1;
             bool goon = true;
+            int64_t chain_steps = 0;
             do {
+                check_chain_steps(++chain_steps);
                 line.push_back(next_v);
                 if (sharp_o[next_v] && sharp_o[v] &&
                     find(sharp.begin(), sharp.end(), next_v) == sharp.end()) {
@@ -1325,7 +1350,9 @@ void Optimizer::extract_patch(
         }
         loop.push_back(point1);
         loop.push_back(point2);
+        int64_t chain_steps = 0;
         do {
+            check_chain_steps(++chain_steps);
             for (int j = 0; j < boundaryvertex.size(); ++j) {
                 if (boundaryvertex[j] == -1) continue;
                 if (boundaryvertex[j] == point2 && j != posi) {
@@ -1418,6 +1445,12 @@ void Optimizer::extract_patch(
 
     if (singularity.size() == 0 && boundary_singularity.size() == 0 &&
         sharp_singularity.size() == 0) {
+        // This case assumes a rectangular domain with four boundary sides. A domain
+        // with a hole can have no singularities and no corners at all.
+        if (patch_line_boundary.size() < 4) {
+            throw std::runtime_error(
+                "extract_patch: no singularities and fewer than four boundary sides");
+        }
         int v = patch_line_boundary[0][0];
         Vector4i one_quad;
         for (int i = 0; i < F_compact.size(); ++i) {
@@ -1444,7 +1477,9 @@ void Optimizer::extract_patch(
             assist_point = one_quad[1];
         }
         std::vector<int> assist_line;
+        int64_t chain_steps = 0;
         do {
+            check_chain_steps(++chain_steps);
             assist_line.push_back(assist_point);
             int v2, v3;
             for (int j = 0; j < VtoF[assist_point].size(); ++j) {
@@ -1482,7 +1517,9 @@ void Optimizer::extract_patch(
             patchline.push_back(vertex);
             int v1, v2, v3;
             v1 = counter_line[i];
+            int64_t chain_steps = 0;
             do {
+                check_chain_steps(++chain_steps);
                 for (int j = 0; j < VtoF[vertex].size(); ++j) {
                     int x = VtoF[vertex][j];
                     for (int k = 0; k < F_compact[x].size(); ++k) {
@@ -1980,7 +2017,9 @@ void Optimizer::extract_patch(
                     collapse_patch[i].push_back(line);
                 }
             }
+            int64_t chain_steps = 0;
             do {
+                check_chain_steps(++chain_steps);
                 for (int j = 0; j < patch[i].size(); ++j) {
                     if (patch[i][j][0] == ender &&
                         patch[i][j][patch[i][j].size() - 1] != starter) {
@@ -2066,7 +2105,9 @@ void Optimizer::extract_patch(
                 v1 = collapse_patch[i][j][0];
                 v2 = collapse_patch[i][j][1];
                 bool loop = true;
+                int64_t chain_steps = 0;
                 do {
+                    check_chain_steps(++chain_steps);
                     int v3 = -1;
                     int v4 = -1;
                     for (int k = 0; k < collapse_patch.size(); ++k) {
@@ -2249,7 +2290,9 @@ void Optimizer::extract_patch(
             int point_next = next;
             assist_line.push_back(v_adj2);
             assist_line.push_back(next);
+            int64_t chain_steps = 0;
             do {
+                check_chain_steps(++chain_steps);
                 int v2, v3;
                 for (int j = 0; j < VtoF[point_next].size(); ++j) {
                     int x = VtoF[point_next][j];
@@ -2308,7 +2351,9 @@ void Optimizer::extract_patch(
                 int v2 = assist_line[j];
                 inner_trace.push_back(v1);
                 inner_trace.push_back(v2);
+                int64_t chain_steps = 0;
                 do {
+                    check_chain_steps(++chain_steps);
                     int v3, v4;
                     for (int j = 0; j < VtoF[v2].size(); ++j) {
                         int x = VtoF[v2][j];
@@ -8366,6 +8411,9 @@ void Optimizer::optimize_positions_dynamic(
     }
         
     for (int i = 0; i < unchang.size(); ++i) {
+        if (unchang[i] < 0 || unchang[i] >= O_compact.size()) {
+            throw std::runtime_error("optimize_positions_dynamic: corner index out of range");
+        }
         O_compact[unchang[i]][0] = cornerP[i * 3];
         O_compact[unchang[i]][1] = cornerP[i * 3 + 1];
         O_compact[unchang[i]][2] = cornerP[i * 3 + 2];
