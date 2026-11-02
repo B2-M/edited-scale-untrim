@@ -7500,7 +7500,9 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
     std::vector<int> n_c;
     std::vector<std::vector<int>> n_c_p(relative_point.size());
     for (int i = need_collapse[n] + 1; i < relative_point.size(); ++i) {
-        if (relative_point[i].size() == 1) continue;
+        // r_p keeps empty placeholder entries for layers with no patches, so
+        // relative_point[i][0] below is otherwise an out-of-bounds read.
+        if (relative_point[i].size() == 0 || relative_point[i].size() == 1) continue;
         int v1 = relative_point[i][0][0];
         int v2 = relative_point[i][0][1];
         int v3 = relative_point[i][0][2];
@@ -7662,7 +7664,7 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
                             n_c_p[i].push_back(begin);
                             begin = j + 1;
                             start = 4;
-                            if (find(n_c.begin(), need_collapse.end(), i) == n_c.end()) {
+                            if (find(n_c.begin(), n_c.end(), i) == n_c.end()) {
                                 n_c.push_back(i);
                             }
                         }
