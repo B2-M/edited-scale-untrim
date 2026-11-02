@@ -7,30 +7,27 @@
 //#include <boost/filesystem.hpp>
 //#include <boost/algorithm/string.hpp>
 
-// ***
-#include <unistd.h>
-#include <stdio.h>
-
-
 MergeFit::MergeFit()
 {
     temp_dir = "";
     tri_tol = 1.e-4;
 
-    local_layer = -1;
-    smooth_iter = -1;
+    local_layer = 0;
+    smooth_iter = 0;
+    fix_hole = 1;
 
     preserve_sharp = 1;
-    preserve_sharp_cli = -1;  // -1 = not set via CLI
     preserve_boundary = 1;
     minimum_cost = 1;
     adaptive_scale = 1;
-    quad_num = -1;
+    quad_num = 0;
     angle_tol = 60.;
     magnitude_factor = -1.;
+    magnitude = 1;
+    collapsing_layer = 1;
 
     fit_tol = 1.e-2;
-    area_tol = 1.e-2;
+    area_tol = 5.e-2;
 
     degree = 2;
 
@@ -67,11 +64,6 @@ void MergeFit::set_magnitude_factor(double mag)
 void MergeFit::set_angle_tol(double tol)
 {
     angle_tol = tol;
-}
-
-void MergeFit::set_preserve_sharp(int val)
-{
-    preserve_sharp_cli = val;
 }
 
 void MergeFit::set_fitting_tol(double tol)
@@ -115,13 +107,6 @@ void MergeFit::read_config_file(const std::string &fn)
     {
         std::cout << "==============================================\n";
         cout << "Can't open the configuration file because it may not be provided.\n";
-        char cwd[PATH_MAX];
-        if (getcwd(cwd, sizeof(cwd)) != NULL) {
-            printf("Current working dir: %s\n", cwd);
-        } else {
-            perror("getcwd() error");
-        }
-
 //        cout << "All parameters go default!\n";
     }
     else
@@ -140,11 +125,6 @@ void MergeFit::read_config_file(const std::string &fn)
                 fin >> magnitude_factor;
             else if (parameter_type == "angle_for_sharp:")
                 fin >> angle_tol;
-            else if (parameter_type == "preserve_sharp:")
-            {
-                fin >> temp;
-                preserve_sharp = (temp == "yes" || temp == "1") ? 1 : 0;
-            }
             else if (parameter_type == "fit_tolerance:")
                 fin >> fit_tol;
             else if (parameter_type == "perform_mirror:")
@@ -163,6 +143,14 @@ void MergeFit::read_config_file(const std::string &fn)
                 fin >> run_from;
             else if (parameter_type == "area_tolerance:")
                 fin >> area_tol;
+            else if (parameter_type == "collapsing_layer:")
+                fin >> collapsing_layer;
+            else if (parameter_type == "magnitude:")
+                fin >> magnitude;
+            else if (parameter_type == "fix_hole:")
+                fin >> fix_hole;
+            else if (parameter_type == "minimum_cost:")
+                fin >> minimum_cost;
             else
                 fin >> temp;
         }
@@ -174,6 +162,22 @@ void MergeFit::read_config_file(const std::string &fn)
     {
         std::abort();
     }
+
+//    if (temp_dir.empty())
+//    {
+//        boost::filesystem::path full_path(boost::filesystem::current_path() / "temp");
+//        boost::filesystem::create_directory(full_path);
+//        temp_dir = full_path.string();
+//    }
+//
+//    if (temp_dir.back() != '\\' && temp_dir.back() != '/')
+//    {
+//#ifdef _WIN32
+//        temp_dir += "\\";
+//#else
+//        temp_dir += "/";
+//#endif
+//    }
 }
 
 bool MergeFit::file_exist(const std::string &fn) const
@@ -181,7 +185,6 @@ bool MergeFit::file_exist(const std::string &fn) const
     bool state = false;
     std::ifstream fin;
     fin.open(fn);
-    std::cout << "My File: " << fn << std::endl;
     if (fin.is_open())
     {
         state = true;
@@ -189,7 +192,6 @@ bool MergeFit::file_exist(const std::string &fn) const
     }
     return state;
 }
-
 
 int MergeFit::generate_tri_mesh_from_CAD(const std::string &cad, const std::string &tri)
 {
@@ -202,7 +204,6 @@ int MergeFit::generate_tri_mesh_from_CAD(const std::string &cad, const std::stri
     return 0;
 }
 
-
 int MergeFit::fix_tri_mesh(const std::string &tri_obj, const std::string &tri_fix)
 {
     std::cout << "==============================================\n";
@@ -211,11 +212,10 @@ int MergeFit::fix_tri_mesh(const std::string &tri_obj, const std::string &tri_fi
     load load_mesh;
     load_mesh.Loader(tri_obj);
     load_mesh.initialize();
-    fix_mesh.Fixmesh(load_mesh, 0, local_layer, smooth_iter);
+    fix_mesh.Fixmesh(load_mesh, fix_hole, local_layer, smooth_iter);
     load_mesh.Outer(tri_fix.c_str(), 1);
     return 0;
 }
-
 
 int MergeFit::generate_quad_mesh_from_tri_mesh(const std::string &tri_fix, const std::string &patch_info)
 {
@@ -225,7 +225,7 @@ int MergeFit::generate_quad_mesh_from_tri_mesh(const std::string &tri_fix, const
     const std::string patch_vtk = temp_dir + "patch";
     qflow::quadgeneration quad_gen;
     quad_gen.QMG(tri_fix, quad_vtk, patch_vtk, patch_info,
-                 magnitude_factor, preserve_sharp, preserve_boundary, minimum_cost, adaptive_scale, angle_tol);
+        magnitude_factor, preserve_sharp, preserve_boundary, minimum_cost, adaptive_scale, angle_tol, collapsing_layer, magnitude, quad_num);
 
     // get mesh info if needed
     std::vector<Eigen::Vector3d> vertex;
@@ -234,7 +234,6 @@ int MergeFit::generate_quad_mesh_from_tri_mesh(const std::string &tri_fix, const
 
     return 0;
 }
-
 
 int MergeFit::fit_NURBS_from_quad_patch(const std::string &patch_info, const std::string &surf)
 {
@@ -248,7 +247,6 @@ int MergeFit::fit_NURBS_from_quad_patch(const std::string &patch_info, const std
     fit.write(surf);
     return 0;
 }
-
 
 int MergeFit::write_CAD_to_step(const std::string &surf_pat, const std::string &cad_out)
 {
@@ -272,9 +270,6 @@ int MergeFit::write_CAD_to_step(const std::string &surf_pat, const std::string &
 int MergeFit::run(const std::string& cad_file_in, const std::string& cad_file_out, const std::string& config_file)
 {
     read_config_file(config_file);
-    // CLI flag overrides config file value if set
-    if (preserve_sharp_cli >= 0)
-        preserve_sharp = preserve_sharp_cli;
 
     // temporary files
     const std::string tri_obj = temp_dir + "tri.obj";
@@ -306,15 +301,15 @@ int MergeFit::run(const std::string& cad_file_in, const std::string& cad_file_ou
     }
     else if (run_from == 2)
     {
-        if (!file_exist(cad_file_in))
+        if (!file_exist(tri_fix))
         {
             std::cerr << "The fixed triangle mesh does not exist!\n";
             std::cerr << "Set the parameter <run_from> as 0 and rerun the program.\n";
             return 1;
         }
-        generate_quad_mesh_from_tri_mesh(cad_file_in, patch_info);
-        // fit_NURBS_from_quad_patch(patch_info, surf);
-        // write_CAD_to_step(surf_pat, cad_file_out);
+        generate_quad_mesh_from_tri_mesh(tri_fix, patch_info);
+        fit_NURBS_from_quad_patch(patch_info, surf);
+        write_CAD_to_step(surf_pat, cad_file_out);
     }
     else if (run_from == 3)
     {
@@ -380,14 +375,13 @@ int MergeFit::run(const std::string& cad_file_in, const std::string& cad_file_ou
     }
     else if (run_from == 2)
     {
-        if (!file_exist(cad_file_in))
+        if (!file_exist(tri_fix))
         {
             std::cerr << "The fixed triangle mesh does not exist!\n";
             std::cerr << "Set the parameter <run_from> as 0 and rerun the program.\n";
             return 1;
         }
-        std::cout << cad_file_in << "\n";
-        generate_quad_mesh_from_tri_mesh(cad_file_in, patch_info);
+        generate_quad_mesh_from_tri_mesh(tri_fix, patch_info);
         fit_NURBS_from_quad_patch(patch_info, surf);
         write_CAD_to_step(surf_pat, cad_file_out);
     }

@@ -200,14 +200,7 @@ void ExportLocalSat(std::vector<Vector2i> &edge_diff, const std::vector<Vector3i
             int edgeid = face_edgeIds[i][j];
             diff[j] = rshift90(edge_diff[edgeid], face_edgeOrients[i][j]);
             var[j] = rshift90(Vector2i(edgeid * 2 + 1, edgeid * 2 + 2), face_edgeOrients[i][j]);
-			for (int k = 0; k < 2; ++k) {
-				if (var[j][k] > 1e-5)
-					cst[j][k] = 1;
-				else if (var[j][k] < 1e-5)
-					cst[j][k] = -1;
-				else
-					cst[j][k] = 0;
-			}
+            cst[j] = var[j].array().sign();
             var[j] = var[j].array().abs() - 1;
         }
 

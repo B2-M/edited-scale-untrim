@@ -59,53 +59,6 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
             }
         }
     }
-    //
-    //for (int i = 0; i < boundary.size(); ++i) {
-    //    if (find(Bpoint.begin(), Bpoint.end(), boundary[i]) == Bpoint.end()) {
-    //        Bpoint.push_back(boundary[i]);
-    //    }
-    //}
-    sort(Bpoint.begin(), Bpoint.end());
-    //ofstream ossss("C:\\Users\\Administrator\\Desktop\\1\\plate\\test2.vtk");
-    //ossss << "# vtk DataFile Version 2.0"
-    //    << "\n";
-    //ossss << "name, Created by Gmsh 4.11.2-git-c089f96d2 "
-    //    << "\n";
-    //ossss << "ASCII"
-    //    << "\n";
-    //ossss << "DATASET UNSTRUCTURED_GRID"
-    //    << "\n";
-    //ossss << "POINTS"
-    //    << " " << Bpoint.size() << " "
-    //    << "double"
-    //    << "\n";
-    //for (int i = 0; i < Bpoint.size(); ++i) {
-    //    double t1, t2, t3;
-    //    int u = Bpoint[i];
-    //    t1 = V.col(u)[0];
-    //    t2 = V.col(u)[1];
-    //    t3 = V.col(u)[2];
-
-    //    ossss << t1 << " " << t2 << " " << t3 << "\n";
-    //    /* oss << 1 << " "<< i << "\n";*/
-    //    /*oss << 1 << "\n";*/
-    //}
-    //ossss << "\n";
-    //ossss << "CELLS"
-    //    << " " << Bpoint.size() << " " << 2 * Bpoint.size() << "\n";
-    //for (int i = 0; i < Bpoint.size(); ++i) {
-    //    ossss << 1 << " " << i << "\n";
-    //    /*oss << 1 << "\n";*/
-    //}
-    //ossss << "\n";
-    //ossss << "CELL_TYPES"
-    //    << " " << Bpoint.size() << "\n";
-    //for (int i = 0; i < Bpoint.size(); ++i) {
-    //    /*oss << t1 << " " << t2 << " " << t3 << "\n";*/
-    //    /* oss << 1 << " "<< i << "\n";*/
-    //    ossss << 1 << "\n";
-    //}
-    //ossss.close();
     std::vector<std::vector<int>> adj_v(V.cols());
     for (int f = 0; f < F.cols(); ++f) {
         for (uint32_t i = 0; i < 3; ++i) {
@@ -130,7 +83,7 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
         min_edge.push_back(min);
     }
     cout << "combine vertice" << "\n";
-    vector<int> merge; // 合并较近的顶点
+    vector<int> merge; 
     vector<int> test(Bpoint.size(), 1);
     for (int i = 0; i < Bpoint.size(); ++i) {
         if (test[i] == -1)continue;
@@ -163,18 +116,6 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
     }
     std::unordered_map<int, int> merge_index_map;
     vector<int> decrease;
-    /*for (int i = 0; i < merge.size(); ++i) {
-        if (i % 2 == 1)continue;
-        decrease.push_back(merge[i + 1]);
-    }
-    vector<int> relative(decrease.size());
-    sort(decrease.begin(), decrease.end());
-    for (int i = 0; i < decrease.size(); ++i) {
-        auto it = std::find(merge.begin(), merge.end(), decrease[i]);
-        int index = std::distance(merge.begin(), it);
-        relative[i] = merge[index - 1];
-    }*/
-    
     for (int i = 0; i < merge.size(); ++i) {
         merge_index_map[merge[i]] = i;
     }
@@ -225,78 +166,7 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
         new_n.col(a) = n.col(i);
         a += 1;
     }
-    /*for (int i = 0; i < decrease.size(); ++i) {
-        int v = decrease[i];
-        for (int j = 0; j < F.cols(); ++j) {
-            auto& t1 = F.col(j)[0];
-            auto& t2 = F.col(j)[1];
-            auto& t3 = F.col(j)[2];
-            if (t1 == v) {
-                t1 = relative[i];
-            }
-            if (t2 == v) {
-                t2 = relative[i];
-            }
-            if (t3 == v) {
-                t3 = relative[i];
-            }
 
-        }
-    }
-    for (int i = 0; i < decrease.size(); ++i) {
-        int v = decrease[i];
-        if (i == 0) {
-            for (int j = 0; j < v + 1; ++j) {
-                table[j] = -1;
-            }
-            continue;
-        }
-        for (int j = 0; j < F.cols(); ++j) {
-            auto& t1 = F.col(j)[0];
-            auto& t2 = F.col(j)[1];
-            auto& t3 = F.col(j)[2];
-            if (t1 < v && table[t1] != -1) {
-                t1 -= i;
-            }
-            if (t2 < v && table[t2] != -1) {
-                t2 -= i;
-            }
-            if (t3 < v && table[t3] != -1) {
-                t3 -= i;
-            }
-        }
-        for (int j = 0; j < v; ++j) {
-            table[j] = -1;
-        }
-        table[v] = -1;
-        if (i == decrease.size() - 1 && v != V.cols()) {
-            for (int j = 0; j < F.cols(); ++j) {
-                auto& t1 = F.col(j)[0];
-                auto& t2 = F.col(j)[1];
-                auto& t3 = F.col(j)[2];
-                if (t1 > v) {
-                    t1 -= decrease.size();
-                }
-                if (t2 > v) {
-                    t2 -= decrease.size();
-                }
-                if (t3 > v) {
-                    t3 -= decrease.size();
-                }
-            }
-
-        }
-    }*/
-    /*Eigen::MatrixXd new_n;
-    new_v.resize(3, V.cols() - decrease.size());
-    new_n.resize(3, V.cols() - decrease.size());
-    int a = 0;
-    for (int i = 0; i < V.cols(); ++i) {
-        if (find(decrease.begin(), decrease.end(), i) != decrease.end()) continue;
-        new_v.col(a) = V.col(i);
-        new_n.col(a) = n.col(i);
-        a += 1;
-    }*/
     cout << "combine vertice and edge" << "\n";
     computeboundary(new_v, F, EtE);
     std::vector<std::vector<int>> adjv(new_v.cols());
@@ -344,63 +214,6 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
             }
         }
     }
-    /*for (uint32_t i = 0; i < 3 * F.cols(); ++i) {
-        if (EtE[i] == -1) {
-            sequence.push_back(i);
-            uint32_t u0 = F(i % 3, i / 3);
-            uint32_t u1 = F((i + 1) % 3, i / 3);
-            boundaryedge.push_back(u0);
-            boundaryedge.push_back(u1);
-        }
-    }
-
-    vector<int> boundarypoint;
-    vector<int> small_edge;
-    for (int i = 0; i < boundaryedge.size(); ++i) {
-        if (find(boundarypoint.begin(), boundarypoint.end(), boundaryedge[i]) == boundarypoint.end()) {
-            boundarypoint.push_back(boundaryedge[i]);
-        }
-    }*/
-    ofstream os("C:\\Users\\Administrator\\Desktop\\1\\plate\\test1.vtk");
-    os << "# vtk DataFile Version 2.0"
-        << "\n";
-    os << "name, Created by Gmsh 4.11.2-git-c089f96d2 "
-        << "\n";
-    os << "ASCII"
-        << "\n";
-    os << "DATASET UNSTRUCTURED_GRID"
-        << "\n";
-    os << "POINTS"
-        << " " << boundarypoint.size() << " "
-        << "double"
-        << "\n";
-    for (int i = 0; i < boundarypoint.size(); ++i) {
-        double t1, t2, t3;
-        int u = boundarypoint[i];
-        t1 = new_v.col(u)[0];
-        t2 = new_v.col(u)[1];
-        t3 = new_v.col(u)[2];
-
-        os << t1 << " " << t2 << " " << t3 << "\n";
-        /* oss << 1 << " "<< i << "\n";*/
-        /*oss << 1 << "\n";*/
-    }
-    os << "\n";
-    os << "CELLS"
-        << " " << boundarypoint.size() << " " << 2 * boundarypoint.size() << "\n";
-    for (int i = 0; i < boundarypoint.size(); ++i) {
-        os << 1 << " " << i << "\n";
-        /*oss << 1 << "\n";*/
-    }
-    os << "\n";
-    os << "CELL_TYPES"
-        << " " << boundarypoint.size() << "\n";
-    for (int i = 0; i < boundarypoint.size(); ++i) {
-        /*oss << t1 << " " << t2 << " " << t3 << "\n";*/
-        /* oss << 1 << " "<< i << "\n";*/
-        os << 1 << "\n";
-    }
-    os.close();
     vector<int> need_increase;
     vector<int> relative_best_j;
     for (int i = 0; i < boundarypoint.size(); ++i) {
@@ -770,74 +583,8 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
         b += 1;
     }
     F = FF;
-    /*for (int i = 0; i < relative_n.size(); ++i) {
-        int n = relative_n[i];
-        F(n % 3, n / 3) = -1;
-        F((n + 1) % 3, n / 3) = -1;
-        F((n + 2) % 3, n / 3) = -1;
-    }
-
-    vector<int> temp;
-    for (int i = 0; i < F.cols(); ++i) {
-        double t1, t2, t3;
-        t1 = F.col(i)[0];
-        t2 = F.col(i)[1];
-        t3 = F.col(i)[2];
-        if (t1 == -1 || t2 == -1 || t3 == -1)continue;
-        temp.push_back(t1);
-        temp.push_back(t2);
-        temp.push_back(t3);
-    }
-    for (int i = 0; i < new_f.size(); ++i) {
-        temp.push_back(new_f[i]);
-    }
-    Eigen::MatrixXi FF;
-    FF.resize(3, temp.size() / 3);
-    for (int i = 0; i < temp.size() / 3; ++i) {
-        FF.col(i)[0] = temp[i * 3];
-        FF.col(i)[1] = temp[i * 3 + 1];
-        FF.col(i)[2] = temp[i * 3 + 2];
-    }
-    F.resize(3, FF.cols());
-    for (int i = 0; i < temp.size() / 3; ++i) {
-        F.col(i)[0] = temp[i * 3];
-        F.col(i)[1] = temp[i * 3 + 1];
-        F.col(i)[2] = temp[i * 3 + 2];
-    }
-    new_f.resize(0);*/
     cout << "combine end" << "\n";
     computeboundary(new_v, F, EtE);
-    /*for (int i = 0; i < 1; ++i) {
-        vector<int> n;
-        n.push_back(5458150);
-        n.push_back(10867491);
-        vector<vector<int>> adj_face(F.size());
-        for (int i = 0; i < EtE.size(); ++i) {
-            if (EtE[i] == -1)continue;
-            adj_face[i / 3].push_back(EtE[i] / 3);
-        }
-        queue<int> queue;
-        vector<int> open(F.size(), 1);
-        for (int i = 0; i < n.size(); ++i) {
-            queue.push(n[i]);
-            open[n[i]] = -1;
-        }
-        while (!queue.empty()) {
-            int n = queue.front();
-            queue.pop();
-            int u0, u1, temp;
-            u0 = F.col(n)[1];
-            u1 = F.col(n)[2];
-            F.col(n)[1] = u1;
-            F.col(n)[2] = u0;
-            for (auto& v : adj_face[n]) {
-                if (open[v] == -1)continue;
-                queue.push(v);
-                open[v] = -1;
-            }
-        }
-        computeboundary(V, F, EtE);
-    }*/
     vector<vector<int>> adj_face(F.size());
     for (int i = 0; i < EtE.size(); ++i) {
         if (EtE[i] == -1)continue;
@@ -847,73 +594,6 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
     queue.push(0);
     vector<int> open(F.size(), 1);
     open[0] = -1;
-    bool change = false;
-    /*while (!queue.empty()) {
-        int f = queue.front();
-        queue.pop();
-        int u0, u1, u2;
-        u0 = F.col(f)[0];
-        u1 = F.col(f)[1];
-        u2 = F.col(f)[2];
-        for (auto& v : adj_face[f]) {
-            if (open[v] == -1)continue;
-            int v0, v1, v2;
-            v0 = F.col(v)[0];
-            v1 = F.col(v)[1];
-            v2 = F.col(v)[2];
-            if (v0 == u0 && v1 == u1) {
-                change = true;
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-            }
-            else if (v1 == u0 && v2 == u1) {
-                change = true;
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-            }
-            else if (v2 == u0 && v0 == u1) {
-                change = true;
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-            }
-            else if (v0 == u1 && v1 == u2) {
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-                change = true;
-            }
-            else if (v1 == u1 && v2 == u2) {
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-                change = true;
-            }
-            else if (v2 == u1 && v0 == u2) {
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-                change = true;
-            }
-            else if (v0 == u2 && v1 == u0) {
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-                change = true;
-            }
-            else if (v1 == u2 && v2 == u0) {
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0; 
-                change = true;
-            }
-            else if (v2 == u2 && v0 == u0) {
-                F.col(v)[0] = v1;
-                F.col(v)[1] = v0;
-                change = true;
-            }
-            queue.push(v);
-            open[v] = -1;
-        }
-    }
-    if (change) {
-        cout << change << "\n";
-        computeboundary(new_v, F, EtE);
-    }*/
     if (fix_hole) {
         vector<int>sharp_edges;
         sharp_edges.resize(F.cols() * 3, 0);
@@ -971,53 +651,6 @@ void fIxmesh::Fixmesh(load& mRes, int fix_hole, int local_layer, int iteration) 
             }
             
         }
-        /*for (uint32_t i = 0; i < boundaryvertex.size(); ++i) {
-            int u0 = boundaryvertex[i];
-            if (find(bvertex.begin(), bvertex.end(), u0) == bvertex.end()) {
-                bvertex.push_back(u0);
-            }
-        }*/
-        ofstream oss("C:\\Users\\Administrator\\Desktop\\1\\plate\\test2.vtk");
-        oss << "# vtk DataFile Version 2.0"
-            << "\n";
-        oss << "name, Created by Gmsh 4.11.2-git-c089f96d2 "
-            << "\n";
-        oss << "ASCII"
-            << "\n";
-        oss << "DATASET UNSTRUCTURED_GRID"
-            << "\n";
-        oss << "POINTS"
-            << " " << bvertex.size() << " "
-            << "double"
-            << "\n";
-        for (int i = 0; i < bvertex.size(); ++i) {
-            double t1, t2, t3;
-            int u = bvertex[i];
-            t1 = new_v.col(u)[0];
-            t2 = new_v.col(u)[1];
-            t3 = new_v.col(u)[2];
-
-            oss << t1 << " " << t2 << " " << t3 << "\n";
-            /* oss << 1 << " "<< i << "\n";*/
-            /*oss << 1 << "\n";*/
-        }
-        oss << "\n";
-        oss << "CELLS"
-            << " " << bvertex.size() << " " << 2 * bvertex.size() << "\n";
-        for (int i = 0; i < bvertex.size(); ++i) {
-            oss << 1 << " " << i << "\n";
-            /*oss << 1 << "\n";*/
-        }
-        oss << "\n";
-        oss << "CELL_TYPES"
-            << " " << bvertex.size() << "\n";
-        for (int i = 0; i < bvertex.size(); ++i) {
-            /*oss << t1 << " " << t2 << " " << t3 << "\n";*/
-            /* oss << 1 << " "<< i << "\n";*/
-            oss << 1 << "\n";
-        }
-        oss.close();
-
         vector<int> compare(new_v.size(), 0);
         vector<int> error_vertex;
         bool error = false;

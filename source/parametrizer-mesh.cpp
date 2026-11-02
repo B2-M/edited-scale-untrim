@@ -59,7 +59,7 @@ void Parametrizer::Load(const char* filename) {
     NormalizeMesh();
 }
 
-void Parametrizer::Initialize(double faces, double angle) {
+void Parametrizer::Initialize(double faces, double angle, int magnitude, int quad_num) {
    
     vector<int> face{};
     vector<double> triangle{};
@@ -89,53 +89,45 @@ void Parametrizer::Initialize(double faces, double angle) {
     for (int i = 0; i < V.cols(); ++i) {
         rho[i] = 1;
     }
-    double magnitude;
-    if (F.cols() > 10000) {
-        magnitude = F.cols() / 10000.0;
-}
-    else {
-        magnitude = 1;
-    }
-#ifdef PERFORMANCE_TEST
-    scale = sqrt(surface_area / (V.cols() * 10));
-#else
-    if (faces <= 0) {
-        scale = sqrt(2 * surface_area / F.cols()) * sqrt(magnitude) * 1.4;
-    } else {
-        scale = std::sqrt(2 * surface_area / F.cols()) * sqrt(magnitude) * faces;
-    }
-#endif
-    double target_len = std::min(scale / 2, average_edge_length * 2);
-#ifdef PERFORMANCE_TEST
-    scale = sqrt(surface_area / V.cols());
-#endif
-
-    /*std::vector<int> temp{};
-    for (int i = 0; i < F.cols(); ++i) {
-        temp.push_back(F.col(i)[0]);
-        temp.push_back(F.col(i)[1]);
-        temp.push_back(F.col(i)[2]);
-    }
-   
-    std::vector<int> temp1{};
-    for (int i = 0; i < V.cols(); ++i) {
-        int num1234 = std::count(temp.begin(), temp.end(), i);
-        if (num1234 < 3) {
-            temp1.push_back(i);
+    int magnitude_1 = 1;
+    if (magnitude) {
+        if (F.cols() <  10000) {
+            magnitude_1 = 1;
+        } 
+        else if (F.cols() >= 10000 && F.cols() < 100000) {
+            magnitude_1 = F.cols() / 10000.0;
+        }
+        else if (F.cols() >= 100000 && F.cols() < 1000000) {
+            magnitude_1 = F.cols() / 100000.0;
+        }
+        else if (F.cols() >= 1000000 && F.cols() < 10000000) {
+            magnitude_1 = F.cols() / 1000000.0;
+        }
+        else if (F.cols() >= 10000000 && F.cols() < 100000000) {
+            magnitude_1 = F.cols() / 10000000.0;
+        }
+        else {
+            magnitude_1 = F.cols() / 100000000.0;
         }
     }
-    Corner.resize(temp1.size(), 0);
-    for (int i = 0; i < temp1.size(); ++i) {
-        Corner[i] = temp1[i];
+    if (faces <= 0) {
+        scale = sqrt(2 * surface_area / F.cols()) * sqrt(magnitude_1) * 1.4;
     }
-    CornerP.resize(3 * Corner.size(), 0);
-    for (int i = 0; i < temp1.size(); ++i) {
-        CornerP[3 * i] = V.col(temp1[i])[0];
-        CornerP[3 * i + 1] = V.col(temp1[i])[1];
-        CornerP[3 * i + 2] = V.col(temp1[i])[2];
-    }*/
-    
-    
+    else {
+        scale = std::sqrt(2 * surface_area / F.cols()) * sqrt(magnitude_1) * faces;
+    }
+    // paremeter settting from Quadriflow //
+    if (quad_num != 0) {
+        if (quad_num < 0) {
+            scale = std::sqrt(surface_area / V.cols());
+        }
+        else {
+            scale = std::sqrt(surface_area / quad_num);
+        }
+    }
+    // paremeter settting from Quadriflow //
+
+    double target_len = std::min(scale / 2, average_edge_length * 2);
     if (target_len < max_edge_length) {
         while (!compute_direct_graph(V, F, V2E, E2E, boundary, nonManifold))
             ;
@@ -146,14 +138,6 @@ void Parametrizer::Initialize(double faces, double angle) {
         ;
     generate_adjacency_matrix_uniform(F, V2E, E2E, nonManifold, adj);
 
-  
-
-    /*Holeposition.resize(3 * V.cols(), 0);
-    for (int i = 0; i < V.cols(); ++i) {
-        Holeposition[3 * i] = V.col(i)[0];
-        Holeposition[3 * i + 1] = V.col(i)[1];
-        Holeposition[3 * i + 2] = V.col(i)[2];
-    }*/
 
     for (int iter = 0; iter < 5; ++iter) {
         VectorXd r(rho.size());
@@ -234,12 +218,7 @@ void Parametrizer::Initialize(double faces, double angle) {
             Vector3d e2 = V.col(i3) - V.col(i2);
             double cos = e1.dot(e2) / (sqrt(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]) *
                                        sqrt(e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2]));
-            // Threshold: -cos(angle) detects boundary corners where the exterior
-            // turning angle >= angle degrees.  The default angle=60 reproduces
-            // the original hard-coded -0.5 (= -cos(60°)).  A smaller angle
-            // (e.g. 30) detects more-obtuse corners (interior angle up to 150°).
-            double boundary_cos_thres = -std::cos(angle / 180.0 * 3.141592654);
-            if (cos > boundary_cos_thres) {
+            if (cos > -0.5) {
                 Corner.push_back(i2);
                 CornerP.push_back(V.col(i2)[0]);
                 CornerP.push_back(V.col(i2)[1]);
@@ -288,7 +267,6 @@ void Parametrizer::Initialize(double faces, double angle) {
     hierarchy.mface = std::move(face);
     hierarchy.mboundaryvertex = std::move(boundaryvertex);
     hierarchy.msharpvertex = std::move(sharpvertex);
-    /*hierarchy.mholeposition = std::move(Holeposition);*/
     hierarchy.Initialize(scale, flag_adaptive_scale);
 }
 

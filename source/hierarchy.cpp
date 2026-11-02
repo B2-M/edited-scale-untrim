@@ -1,4 +1,9 @@
 
+
+
+
+
+
 #include "hierarchy.hpp"
 #include <fstream>
 #include <algorithm>
@@ -7,12 +12,13 @@
 #include "field-math.hpp"
 #include <queue>
 #include "localsat.hpp"
-#include "pcg32.h"
+#include "pcg32/pcg32.h"
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <cstdlib>
 #include <sstream>
+using namespace std;
 
 
 
@@ -855,14 +861,7 @@ int Hierarchy::FixFlipSat(int depth, int threshold) {
         for (int j = 0; j < 3; ++j) assert(ind[j] != -1);
         for (int j = 0; j < 3; ++j) {
             var[j] = rshift90(Vector2i(ind[j] * 2 + 1, ind[j] * 2 + 2), FQ[i][j]);
-			for (int k = 0; k < 2; ++k) {
-				if (var[j][k] > 1e-5)
-					cst[j][k] = 1;
-				else if (var[j][k] < 1e-5)
-					cst[j][k] = -1;
-				else
-					cst[j][k] = 0; 
-			}
+            cst[j] = var[j].array().sign();
             var[j] = var[j].array().abs() - 1;
         }
 

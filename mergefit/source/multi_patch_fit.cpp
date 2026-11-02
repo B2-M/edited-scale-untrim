@@ -199,7 +199,6 @@ bool MultiPatchFit::fit()
     bool is_success_all = true;
     for (auto i=0; i<patches.size(); i++)
     {
-        cerr << "patch " << i << endl;
         prepair_tri_mesh(i);
         auto& sample_pts = meshes[i].get_points();
         bool is_success = surfs[i].fit_grid(sample_pts, patches[i].n_spt[0], patches[i].n_spt[1]);

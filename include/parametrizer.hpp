@@ -58,7 +58,7 @@ class Parametrizer {
     void ComputeSharpEdges(double angle);
     void ComputeSharpO();
     void ComputeVertexArea();
-    void Initialize(double faces, double angle);
+    void Initialize(double faces, double angle, int magnitude, int quad_num);
 
     // Singularity and Mesh property
     void AnalyzeValence();

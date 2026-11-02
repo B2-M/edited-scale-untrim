@@ -1,3 +1,7 @@
+
+
+
+
 #include"quadgeneration.h"
 #include "config.hpp"
 #include "field-math.hpp"
@@ -14,8 +18,8 @@
 
 namespace qflow {
 void quadgeneration::QMG(std::string input_tri, std::string output_quad, std::string output_patch_file,
-         std::string output_patch_information, double magnitude_factor, int preserve_sharp,
-         int preserve_boundary, int minimum_cost, int adaptive_scale, double angle) {
+    std::string output_patch_information, double magnitude_factor, int preserve_sharp,
+    int preserve_boundary, int minimum_cost, int adaptive_scale, double angle, int layer, int magnitude, int quad_num) {
     Parametrizer field;
     int t1, t2;
     std::string input_obj, output_obj, output_patch, output_txt;
@@ -28,23 +32,21 @@ void quadgeneration::QMG(std::string input_tri, std::string output_quad, std::st
     printf("%f %s %s\n", faces, input_obj.c_str(), output_obj.c_str());
     if (input_obj.size() >= 1) {
         field.Load(input_obj.c_str());
-    } else {
+    }
+    else {
         assert(0);
         // field.Load((std::string(DATA_PATH) + "/fertility.obj").c_str());
     }
 
     field.flag_preserve_sharp = preserve_sharp;
     field.flag_preserve_boundary = preserve_boundary;
-    field.flag_minimum_cost_flow = 1;
+    field.flag_minimum_cost_flow = minimum_cost;
     field.flag_adaptive_scale = 0;
-    printf("Initialize...\n");
-    t1 = GetCurrentTime64();
-    field.Initialize(faces, angle);
-    t2 = GetCurrentTime64();
-    printf("Use %lf seconds\n", (t2 - t1) * 1e-3);
+
+    field.Initialize(faces, angle, magnitude, quad_num);
+
 
     if (field.flag_preserve_boundary) {
-        printf("Add boundary constrains...\n");
         Hierarchy& mRes = field.hierarchy;
         mRes.clearConstraints();
         std::vector<int> boundaryvertex{};
@@ -95,9 +97,15 @@ void quadgeneration::QMG(std::string input_tri, std::string output_quad, std::st
                 loop.push_back(point3);
                 point2 = point3;
             } while (point3 != point1);
+            if (mRes.mstart.size() == 0) {
+                mRes.mstart.push_back(loop[0]);
+            }
             if (loop.size() < boundaryvertex.size() / 5) {
                 if (mRes.mstart.size() == 0) {
                     mRes.mstart.push_back(loop[0]);
+                }
+                else {
+                    mRes.mstart[0]= loop[0];
                 }
             }
             for (int k = 0; k < loop.size(); ++k) {
@@ -119,96 +127,62 @@ void quadgeneration::QMG(std::string input_tri, std::string output_quad, std::st
         mRes.propagateConstraints();
     }
 
-    printf("Solve Orientation Field...\n");
-    t1 = GetCurrentTime64();
 
     Optimizer::optimize_orientations(field.hierarchy);
     field.ComputeOrientationSingularities();
-    t2 = GetCurrentTime64();
-    printf("Use %lf seconds\n", (t2 - t1) * 1e-3);
 
     if (field.flag_adaptive_scale == 1) {
-        printf("Estimate Slop...\n");
-        t1 = GetCurrentTime64();
         field.EstimateSlope();
-        t2 = GetCurrentTime64();
-        printf("Use %lf seconds\n", (t2 - t1) * 1e-3);
+
     }
-    printf("Solve for scale...\n");
-    t1 = GetCurrentTime64();
+
     Optimizer::optimize_scale(field.hierarchy, field.rho, field.flag_adaptive_scale);
     field.flag_adaptive_scale = adaptive_scale;
-    t2 = GetCurrentTime64();
-    printf("Use %lf seconds\n", (t2 - t1) * 1e-3);
 
-    printf("Solve for position field...\n");
-    t1 = GetCurrentTime64();
     Optimizer::optimize_positions(field.hierarchy, field.flag_adaptive_scale);
-
     field.ComputePositionSingularities();
-    t2 = GetCurrentTime64();
-    printf("Use %lf seconds\n", (t2 - t1) * 1e-3);
-    t1 = GetCurrentTime64();
-    printf("Solve index map...\n");
+
 
     field.ComputeIndexMap();
-    t2 = GetCurrentTime64();
-    printf("Indexmap Use %lf seconds\n", (t2 - t1) * 1e-3);
-    printf("Writing the file...\n");
     if (output_obj.size() < 1) {
         assert(0);
         // field.OutputMesh((std::string(DATA_PATH) + "/result.obj").c_str());
     } else {
-    
+        
        field.OutputMesh(output_obj.c_str());
-
     }
 
-	
-    // char userInput;
-    // if (faces == -1) {
-    //     std::cout << "The magnitude_factor is initial value " << "\n";
-    // }
-    // else {
-    //     std::cout << "The magnitude_factor is " << faces <<"\n";
-    // }
-    // std::cout << "please check the quad mesh is correct or not"
-    //           << "\n";
-    // std::cout << "if it is correct  please cin Y/y"
-    //           << "\n";
-    // std::cout << "if wrong  please change the magnitude_factor in setting.config "
-    //           << "\n";
-	// std::cout << "Suggestion: you can try the value from 1 to 2 like 1 , 1.1 , 1.2 , 1.3 "<< " and so on...\n";
-    // std::cin >> userInput;
-    // if (userInput == 'Y' || userInput == 'y') {
-    //     std::cout << "Continuing...." << std::endl;
-    // } else {
-    //     std::cout << "Stopping the program." << std::endl;
-    //     exit(EXIT_SUCCESS);
-    // }
-	// Ver = field.O_compact;
-    // Vector4i quad;
-    // for (int i = 0; i < field.F_compact.size(); ++i) {
-    //     if (field.F_compact[i][0] == -1) continue;
-    //     quad = field.F_compact[i];
-    //     Fer.push_back(quad);
-    // }
+    char userInput;
+    std::cout << "please check the quad mesh is correct or not"
+              << "\n";
+    std::cout << "if it is correct  please cin Y/y"
+              << "\n";
+    std::cout << "if wrong  please change the face_num "
+              << "\n";
+    std::cin >> userInput;
+
+    if (userInput == 'Y' || userInput == 'y') {
+        std::cout << "Continuing...." << std::endl;
+    } else {
+        std::cout << "Stopping the program." << std::endl;
+        exit(EXIT_SUCCESS);
+    }
+    Ver = field.O_compact;
+    Vector4i quad;
+    for (int i = 0; i < field.F_compact.size(); ++i) {
+        if (field.F_compact[i][0] == -1) continue;
+        quad = field.F_compact[i];
+        Fer.push_back(quad);
+    }
+    int collapsing_layer = layer;
     Optimizer::extract_patch(field.hierarchy, field.F_new, field.V_new, field.N_new, field.Q_new,
                              field.Vset_new, field.O_compact_new, field.F_compact_new,
                              field.V2E_compact_new, field.E2E_compact_new, field.mScale_new,
                              field.diffs_new, field.diff_count_new, field.patch_compact,
                              field.sharp_o_new, field.compact_sharp_constraints_new,
-                             field.boundary_o_new, field.compact_boundary_constraints_new);
+                             field.boundary_o_new, field.compact_boundary_constraints_new, collapsing_layer);
     field.Outputpatch(output_patch.c_str(), output_txt.c_str());
-    // Previously disabled: Optimizer::extract_patch (optimizer.cpp) crashed with a
-    // heap-buffer-overflow read of `Inner_quad[i]` (optimizer.cpp:1960), because
-    // `Inner_quad` was pushed conditionally (only on a match, optimizer.cpp:~1900)
-    // while `patch`/`point` were pushed unconditionally for the same loop iteration,
-    // silently desyncing the three parallel vectors. Fixed by only committing
-    // patch/point/Inner_quad together, guarded on a match being found. Confirmed
-    // fixed via AddressSanitizer (3 consecutive clean runs on hookBase.obj). See
-    // Task1.md for the original diagnosis this superseded.
-    // printf("finish...\n");
+    printf("finish...\n");
     //	field.LoopFace(2);
 }
 void quadgeneration::meshinformation(std::vector<Vector3d> &V_, std::vector<Vector4i> &F_){

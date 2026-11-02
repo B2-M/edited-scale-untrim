@@ -48,7 +48,7 @@ void load::Loader(std::string filename) {
 
 				if (readingpos) {
 
-					if (sscanf(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
+					if (sscanf_s(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
 						V.push_back(x);
 						V.push_back(y);
 						V.push_back(z);
@@ -57,7 +57,7 @@ void load::Loader(std::string filename) {
 
 				else if (readingtri) {
 
-					if (sscanf(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
+					if (sscanf_s(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
 						F.push_back(v1);
 						F.push_back(v2);
 						F.push_back(v3);
@@ -125,29 +125,10 @@ void load::Loader(std::string filename) {
 		int t = F[i] - 1;
 		F1[i] = t;
 	}
-	/*for (int i = 0; i < F1.size(); ++i) {
-		if (temp[F1[i]] == -1) {
-			temp[F1[i]] = b;
-			b += 1;
-		}
-	}
-	for (int i = 0; i < F1.size(); ++i) {
-		F1[i] = temp[F1[i]];
-	}
-	std::vector<int> temp1(V.size() / 3);
-	for (int i = 0; i < temp.size(); ++i) {
-		auto it = std::find(temp.begin(), temp.end(), i);
-		int index = std::distance(temp.begin(), it);
-		temp1[i] = index;
-	}*/
+
 
 	Vertice.resize(3, V1.size() / 3);
 	Face.resize(3, F1.size() / 3);
-	/*for (int i = 0; i < V1.size() / 3; ++i) {
-		Vertice.col(i)[0] = V1[temp1[i] * 3];
-		Vertice.col(i)[1] = V1[temp1[i] * 3 + 1];
-		Vertice.col(i)[2] = V1[temp1[i] * 3 + 2];
-	}*/
 	for (int i = 0; i < V1.size() / 3; ++i) {
 		Vertice.col(i)[0] = V1[i * 3];
 		Vertice.col(i)[1] = V1[i * 3 + 1];
@@ -197,7 +178,7 @@ void load::Loader_errortri(string filename, int p1, int p2) {
 
 				if (readingpos) {
 
-					if (sscanf(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
+					if (sscanf_s(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
 						V.push_back(x);
 						V.push_back(y);
 						V.push_back(z);
@@ -206,7 +187,7 @@ void load::Loader_errortri(string filename, int p1, int p2) {
 
 				else if (readingtri) {
 
-					if (sscanf(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
+					if (sscanf_s(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
 						F.push_back(v1);
 						F.push_back(v2);
 						F.push_back(v3);
@@ -353,7 +334,7 @@ void load::converse(std::string filename, std::string filename1) {
 
 				if (readingpos) {
 
-					if (sscanf(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
+					if (sscanf_s(line_str.c_str(), "%lf %lf %lf", &x, &y, &z) == 3) {
 						V.push_back(x);
 						V.push_back(y);
 						V.push_back(z);
@@ -362,7 +343,7 @@ void load::converse(std::string filename, std::string filename1) {
 
 				else if (readingtri) {
 
-					if (sscanf(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
+					if (sscanf_s(line_str.c_str(), "%d %d %d", &v1, &v2, &v3) == 3) {
 						F.push_back(v1);
 						F.push_back(v2);
 						F.push_back(v3);
@@ -567,11 +548,6 @@ void load::ComputeE2E() {
 			}	
 		}
 	}
-	std::ofstream osss("C:\\Users\\Administrator\\Desktop\\compare\\E2E2.txt");
-	for (int i = 0; i < E2E.size(); ++i) {
-		osss << E2E[i] << "\n";
-	}
-	osss.close();
 }
 void load::ComputeSmoothNormal() {
 

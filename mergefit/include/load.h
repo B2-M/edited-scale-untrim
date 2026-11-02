@@ -1,4 +1,4 @@
-#pragma execution_character_set("utf-8")
+
 
 #ifndef __LOAD_H
 #define __LOAD_H
@@ -41,17 +41,18 @@ public:
 	vector<double> deflection;
 	void Loadertri(const char* filename);
 	void Loaderquad(const char* filename);
+	void Loader_errortri(string filename, int p1, int p2);
 	void maxdeflection(double& absolute_error, double& relative_error);
 
 	// function
 	void Loader(string filename);
-	void Loader_errortri(string filename, int p1, int p2);
-	void converse(std::string filename, std::string filename1);
-	void ComputeE2E();
+	void converse(string filename, string filename1);
 	/*void Loader1(const char* filename);*/
+	
 	void Outer(const char* filename, int need_fix);
 	void initialize();
 	void ComputeMeshStatus();
+	void ComputeE2E();
 	void ComputeSmoothNormal();
 
 	// inline function

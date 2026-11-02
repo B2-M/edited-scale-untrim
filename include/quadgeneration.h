@@ -30,9 +30,9 @@ namespace qflow {
 
 class quadgeneration {
    public:
-    void QMG(std::string input_tri, std::string output_quad, std::string output_patch_file,
-             std::string output_patch_information, double magnitude_factor, int preserve_sharp,
-             int preserve_boundary, int minimum_cost, int adaptive_scale,double angle);
+       void QMG(std::string input_tri, std::string output_quad, std::string output_patch_file,
+           std::string output_patch_information, double magnitude_factor, int preserve_sharp,
+           int preserve_boundary, int minimum_cost, int adaptive_scale, double angle, int layer, int magnitude, int quad_num);
     void meshinformation(std::vector<Vector3d> &V_, std::vector<Vector4i> &F_);
 
 

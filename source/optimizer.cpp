@@ -70,10 +70,10 @@ void Optimizer::optimize_orientations(Hierarchy& mRes) {
                 vector<int> inner;
                 for (int pi = 0; pi < p.size(); ++pi) {
                     int i = p[pi];
-                    /*if (CQw[i] == 0) {
+                    if (CQw[i] == 0) {
                         inner.push_back(i);
                         continue;
-                    }*/
+                    }
                     const Vector3d n_i = N.col(i);
                     double weight_sum = 0.0f;
                     Vector3d sum = Q.col(i);
@@ -99,7 +99,6 @@ void Optimizer::optimize_orientations(Hierarchy& mRes) {
                             std::pair<Vector3d, Vector3d> value =
                                 compat_orientation_extrinsic_41(sum, n_i, CQ.col(i), n_i);
                             sum = value.first * (1 - cw) + value.second * cw;
-                            /*sum = CQ.col(i);*/
                             sum -= n_i * n_i.dot(sum);
 
                             float norm = sum.norm();
@@ -410,10 +409,6 @@ void Optimizer::optimize_positions(Hierarchy& mRes, int with_scale) {
                 vector<int> inner;
                 for (int pi = 0; pi < p.size(); ++pi) {
                     int i = p[pi];
-                    /*if (COw[i] == 0) {
-                        inner.push_back(i);
-                        continue;
-                    }*/
                     double scale_x = mRes.mScale;
                     double scale_y = mRes.mScale;
                     if (with_scale) {
@@ -576,7 +571,7 @@ void Optimizer::extract_patch(
     std::vector<std::vector<std::vector<int>>>& patch_compact, std::vector<int>& sharp_o,
     std::map<int, std::pair<Vector3d, Vector3d>>& compact_sharp_constraints,
     std::vector<int>& boundary_o,
-    std::map<int, std::pair<Vector3d, Vector3d>>& compact_boundary_constraints) {
+    std::map<int, std::pair<Vector3d, Vector3d>>& compact_boundary_constraints, int collapsing_layer) {
     auto& cornerQ = mRes.mcornerQ;
 
     std::vector<Vector4i> F_compact1;
@@ -1886,8 +1881,6 @@ void Optimizer::extract_patch(
                         adj1 = single_patch[3][1];
                         adj2 = single_patch[2][single_patch[2].size() - 2];
                     }
-                    bool found_inner_quad = false;
-                    Vector4i matched_inner_quad;
                     for (int j = 0; j < start.size(); ++j) {
                         if (start[j] != p) continue;
                         for (int k = 0; k < F_inner[j].size(); ++k) {
@@ -1899,16 +1892,11 @@ void Optimizer::extract_patch(
                             if (find(F.begin(), F.end(), adj1) != F.end() &&
                                 find(F.begin(), F.end(), adj2) != F.end() &&
                                 find(F.begin(), F.end(), p) != F.end()) {
-                                matched_inner_quad = F_inner[j][k];
-                                found_inner_quad = true;
+                                Inner_quad.push_back(F_inner[j][k]);
                                 /*Qu = F_inner[j][k];*/
                             }
                         }
                     }
-                    // patch/point/Inner_quad must stay index-aligned (consumed later as
-                    // Inner_quad[i] for patch[i]/point[i]); skip this patch entirely if no
-                    // matching inner quad was found, rather than leaving Inner_quad short.
-                    if (!found_inner_quad) continue;
                     std::vector<std::vector<int>> Qkx;
                     if (r == 0) {
                         Qkx.push_back(single_patch[0]);
@@ -1951,7 +1939,6 @@ void Optimizer::extract_patch(
                         Qkx.push_back(single_patch[1]);
                     }
                     patch.push_back(Qkx);
-                    Inner_quad.push_back(matched_inner_quad);
                     point.push_back(p);
                     number_patchline[i] = 0;
                     number_patchline[a] = 0;
@@ -2451,8 +2438,12 @@ void Optimizer::extract_patch(
                     three += 1;
                 }
                 if (five == 1 && three == 1) {
-                    /*sin_ft(O_compact, patch_compact, valence, relative_point, layer,
-                           collapse_patch, v, v1, v2, all_singularity, thr_for_sin_patch);*/
+                    sin_ft(O_compact, patch_compact, valence, relative_point, layer,
+                        collapse_patch, v, v1, v2, all_singularity, thr_for_sin_patch, five, three, two_sin_patch);
+                }
+                if (five == 2 && three == 0) {
+                    sin_ft(O_compact, patch_compact, valence, relative_point, layer,
+                        collapse_patch, v, v1, v2, all_singularity, thr_for_sin_patch, five, three, two_sin_patch);
                 }
             }
         }
@@ -2494,9 +2485,6 @@ void Optimizer::extract_patch(
                 }
             }
         }
-        /*relative_point.resize(0);*/
-        collapse_boundary(O_compact, patch_compact, valence, relative_point, layer, collapse_patch,
-                          all_singularity);
         std::vector<int> cannot_collapse;
         for (int i = 0; i < relative_point.size(); ++i) {
             if (relative_point[i].size() == 1) continue;
@@ -2535,7 +2523,7 @@ void Optimizer::extract_patch(
             int begin = -1;
             int start = -1;
             int x = layer[i][0];
-            int c = 0, d = 0, sizec = 0, sized = 0;
+            int c = 0, d = 0, sizec = 0, sized = 0, c1 = 0, d1 = 0, sizec1 = 0, sized1 = 0;
             if (find(all_singularity.begin(), all_singularity.end(), v1) !=
                     all_singularity.end() ||
                 find(all_singularity.begin(), all_singularity.end(), v2) !=
@@ -2548,14 +2536,17 @@ void Optimizer::extract_patch(
                             if (boundary_o[collapse_patch[x][j][k]]) {
                                 c += 1;
                             }
+                            if (sharp_o[collapse_patch[x][j][k]]) {
+                                c1 += 1;
+                            }
                         }
                     }
                     if (collapse_patch[x][j][0] == v4 &&
                         collapse_patch[x][j][collapse_patch[x][j].size() - 1] == v1) {
                         sized = collapse_patch[x][j].size();
                         for (int k = 0; k < collapse_patch[x][j].size(); ++k) {
-                            if (boundary_o[collapse_patch[x][j][k]]) {
-                                d += 1;
+                            if (sharp_o[collapse_patch[x][j][k]]) {
+                                d1 += 1;
                             }
                         }
                     }
@@ -2565,6 +2556,10 @@ void Optimizer::extract_patch(
             if (sized == 2 && boundary_o[v4] && boundary_o[v1]) continue;
             if (c > 2) continue;
             if (d > 2) continue;
+            if (sizec1 == 2 && sharp_o[v2] && sharp_o[v3]) continue;
+            if (sized1 == 2 && sharp_o[v4] && sharp_o[v1]) continue;
+            if (c1 > 2) continue;
+            if (d1 > 2) continue;
             if (find(all_singularity.begin(), all_singularity.end(), v1) !=
                 all_singularity.end()) {
                 if (find(all_singularity.begin(), all_singularity.end(), v2) ==
@@ -2644,7 +2639,7 @@ void Optimizer::extract_patch(
                     v3 = relative_point[i][j][2];
                     v4 = relative_point[i][j][3];
                     int y = layer[i][j];
-                    int e = 0, f = 0, sizee = 0, sizef = 0;
+                    int e = 0, f = 0, sizee = 0, sizef = 0, e1 = 0, f1 = 0, sizee1 = 0, sizef1 = 0;
                     for (int jjj = 0; jjj < collapse_patch[y].size(); ++jjj) {
                         if (collapse_patch[y][jjj][0] == v2 &&
                             collapse_patch[y][jjj][collapse_patch[y][jjj].size() - 1] == v3) {
@@ -2652,6 +2647,9 @@ void Optimizer::extract_patch(
                             for (int k = 0; k < collapse_patch[y][jjj].size(); ++k) {
                                 if (boundary_o[collapse_patch[y][jjj][k]]) {
                                     e += 1;
+                                }
+                                if (sharp_o[collapse_patch[y][jjj][k]]) {
+                                    e1 += 1;
                                 }
                             }
                         }
@@ -2662,6 +2660,9 @@ void Optimizer::extract_patch(
                                 if (boundary_o[collapse_patch[y][jjj][k]]) {
                                     f += 1;
                                 }
+                                if (sharp_o[collapse_patch[y][jjj][k]]) {
+                                    f1 += 1;
+                                }
                             }
                         }
                     }
@@ -2669,6 +2670,10 @@ void Optimizer::extract_patch(
                     if (sizef == 2 && boundary_o[v4] && boundary_o[v1]) continue;
                     if (e > 2) continue;
                     if (f > 2) continue;
+                    if (sizee1 == 2 && sharp_o[v2] && sharp_o[v3]) continue;
+                    if (sizef1 == 2 && sharp_o[v4] && sharp_o[v1]) continue;
+                    if (e1 > 2) continue;
+                    if (f1 > 2) continue;
                     if (find(all_singularity.begin(), all_singularity.end(), v1) !=
                         all_singularity.end()) {
                         if (find(all_singularity.begin(), all_singularity.end(), v2) ==
@@ -2747,7 +2752,7 @@ void Optimizer::extract_patch(
                     v3 = relative_point[i][j][2];
                     v4 = relative_point[i][j][3];
                     int y = layer[i][j];
-                    int e = 0, f = 0, sizee = 0, sizef = 0;
+                    int e = 0, f = 0, sizee = 0, sizef = 0, e1 = 0, f1 = 0, sizee1 = 0, sizef1 = 0;
                     for (int jjj = 0; jjj < collapse_patch[y].size(); ++jjj) {
                         if (collapse_patch[y][jjj][0] == v2 &&
                             collapse_patch[y][jjj][collapse_patch[y][jjj].size() - 1] == v3) {
@@ -2755,6 +2760,9 @@ void Optimizer::extract_patch(
                             for (int k = 0; k < collapse_patch[y][jjj].size(); ++k) {
                                 if (boundary_o[collapse_patch[y][jjj][k]]) {
                                     e += 1;
+                                }
+                                if (sharp_o[collapse_patch[y][jjj][k]]) {
+                                    e1 += 1;
                                 }
                             }
                         }
@@ -2764,6 +2772,9 @@ void Optimizer::extract_patch(
                             for (int k = 0; k < collapse_patch[y][jjj].size(); ++k) {
                                 if (boundary_o[collapse_patch[y][jjj][k]]) {
                                     f += 1;
+                                }
+                                if (sharp_o[collapse_patch[y][jjj][k]]) {
+                                    f1 += 1;
                                 }
                             }
                         }
@@ -2778,12 +2789,32 @@ void Optimizer::extract_patch(
                         start = -1;
                         continue;
                     }
+                    if (sizee1 == 2 && sharp_o[v2] && sharp_o[v3]) {
+                        begin = -1;
+                        start = -1;
+                        continue;
+                    }
+                    if (sizef1 == 2 && sharp_o[v4] && sharp_o[v1]) {
+                        begin = -1;
+                        start = -1;
+                        continue;
+                    }
                     if (e > 2) {
                         begin = -1;
                         start = -1;
                         continue;
                     }
                     if (f > 2) {
+                        begin = -1;
+                        start = -1;
+                        continue;
+                    }
+                    if (e1 > 2) {
+                        begin = -1;
+                        start = -1;
+                        continue;
+                    }
+                    if (f1 > 2) {
                         begin = -1;
                         start = -1;
                         continue;
@@ -2873,14 +2904,16 @@ void Optimizer::extract_patch(
                             need_collapse, all_singularity, collapse_patch, i, double_q,
                             boundary_o);
         }
-        size_three(patch_compact, O_compact, all_singularity, collapse_patch, boundary_o);
+        if (collapsing_layer > 1) {
+            size_n(patch_compact, O_compact, all_singularity, collapse_patch, boundary_o, collapsing_layer);
+        }
     }
 }
 
-void Optimizer::size_three(std::vector<std::vector<std::vector<int>>>& patch_compact,
-                           std::vector<Vector3d>& O_compact, std::vector<int>& all_singularity,
-                           std::vector<std::vector<std::vector<int>>>& collapse_patch,
-                           std::vector<int>& boundary_o) {
+void Optimizer::size_n(std::vector<std::vector<std::vector<int>>>& patch_compact,
+    std::vector<Vector3d>& O_compact, std::vector<int>& all_singularity,
+    std::vector<std::vector<std::vector<int>>>& collapse_patch,
+    std::vector<int>& boundary_o, int layer_collapsing) {
     std::vector<std::vector<int>> collapse_patch_edge;
     std::vector<std::vector<int>> layer;
     for (int i = 0; i < collapse_patch.size(); ++i) {
@@ -2896,7 +2929,7 @@ void Optimizer::size_three(std::vector<std::vector<std::vector<int>>>& patch_com
         int rev = -1;
         for (int j = 0; j < collapse_patch[i].size(); ++j) {
             if (collapse_patch_edge[i][j] == -1) continue;
-            if (collapse_patch[i][j].size() > 5) {
+            if (collapse_patch[i][j].size() > layer_collapsing + 1) {
                 collapse_patch_edge[i][j] = -1;
                 continue;
             }
@@ -2918,14 +2951,6 @@ void Optimizer::size_three(std::vector<std::vector<std::vector<int>>>& patch_com
                 int v4 = -1;
                 for (int k = 0; k < collapse_patch.size(); ++k) {
                     if (k == i) continue;
-                    // A chain of thin patches can close on itself (e.g. a ring around
-                    // a boundary singularity); without this check it would revisit a
-                    // patch already in one_layer via a different edge pair (only the
-                    // specific edge is marked visited via collapse_patch_edge, not the
-                    // whole patch), producing a duplicate entry that breaks every
-                    // downstream assumption that a patch index appears at most once
-                    // across layer. Stop the chain here instead.
-                    if (find(one_layer.begin(), one_layer.end(), k) != one_layer.end()) continue;
                     for (int p = 0; p < collapse_patch[k].size(); ++p) {
                         if (collapse_patch_edge[k][p] == -1) continue;
                         if (collapse_patch[k][p].size() > 5) continue;
@@ -4119,7 +4144,7 @@ void Optimizer::sin_fft_boundary(std::vector<Vector3d>& O_compact, std::vector<i
                     }
                 }
             } else {
-                /////////////////////ï¿½ï¿½Ê±Î´ï¿½Þ¸ï¿½///////////////////////////////////////////////////////////5944-6065
+                /////////////////////ÔÝÊ±Î´ÐÞ¸Ä///////////////////////////////////////////////////////////5944-6065
                 bool begin = true;
                 int b1 = 0;
                 int b2 = 0;
@@ -4299,7 +4324,7 @@ void Optimizer::sin_fft_boundary(std::vector<Vector3d>& O_compact, std::vector<i
                         }
                     }
                 }
-                /////////////////////ï¿½ï¿½Ê±Î´ï¿½Þ¸ï¿½///////////////////////////////////////////////////////////5944-6065
+                /////////////////////ÔÝÊ±Î´ÐÞ¸Ä///////////////////////////////////////////////////////////5944-6065
             }
         }
     }
@@ -5097,7 +5122,7 @@ void Optimizer::sin_fft(std::vector<Vector3d>& O_compact,
                     }
                 }
             } else {
-                /////////////////////ï¿½ï¿½Ê±Î´ï¿½Þ¸ï¿½///////////////////////////////////////////////////////////5944-6065
+                /////////////////////ÔÝÊ±Î´ÐÞ¸Ä///////////////////////////////////////////////////////////5944-6065
                 bool begin = true;
                 int b1 = 0;
                 int b2 = 0;
@@ -5277,7 +5302,7 @@ void Optimizer::sin_fft(std::vector<Vector3d>& O_compact,
                         }
                     }
                 }
-                /////////////////////ï¿½ï¿½Ê±Î´ï¿½Þ¸ï¿½///////////////////////////////////////////////////////////5944-6065
+                /////////////////////ÔÝÊ±Î´ÐÞ¸Ä///////////////////////////////////////////////////////////5944-6065
             }
         }
     }
@@ -6016,7 +6041,7 @@ void Optimizer::sin_ftt(std::vector<Vector3d>& O_compact,
                     }
                 }
             } else {
-                /////////////////////ï¿½ï¿½Ê±Î´ï¿½Þ¸ï¿½///////////////////////////////////////////////////////////5944-6065
+                /////////////////////ÔÝÊ±Î´ÐÞ¸Ä///////////////////////////////////////////////////////////5944-6065
                 bool begin = true;
                 int b1 = 0;
                 int b2 = 0;
@@ -6196,7 +6221,7 @@ void Optimizer::sin_ftt(std::vector<Vector3d>& O_compact,
                         }
                     }
                 }
-                /////////////////////ï¿½ï¿½Ê±Î´ï¿½Þ¸ï¿½///////////////////////////////////////////////////////////5944-6065
+                /////////////////////ÔÝÊ±Î´ÐÞ¸Ä///////////////////////////////////////////////////////////5944-6065
             }
         }
     }
@@ -6344,13 +6369,13 @@ void Optimizer::sin_ftt(std::vector<Vector3d>& O_compact,
 }
 
 void Optimizer::sin_ft(std::vector<Vector3d>& O_compact,
-                       std::vector<std::vector<std::vector<int>>>& patch_compact,
-                       std::vector<int>& valence,
-                       std::vector<std::vector<std::vector<int>>>& relative_point,
-                       std::vector<std::vector<int>>& layer,
-                       std::vector<std::vector<std::vector<int>>>& collapse_patch, int v, int v1,
-                       int v2, std::vector<int>& all_singularity,
-                       std::vector<int>& thr_for_sin_patch) {
+    std::vector<std::vector<std::vector<int>>>& patch_compact,
+    std::vector<int>& valence,
+    std::vector<std::vector<std::vector<int>>>& relative_point,
+    std::vector<std::vector<int>>& layer,
+    std::vector<std::vector<std::vector<int>>>& collapse_patch, int v, int v1,
+    int v2, std::vector<int>& all_singularity,
+    std::vector<int>& thr_for_sin_patch, int size1, int size2, std::vector<int>& two_sin_patch) {
     std::vector<int> renew(O_compact.size(), -1);
     std::vector<int> delete_patch;
     int coll = 0;
@@ -6404,8 +6429,14 @@ void Optimizer::sin_ft(std::vector<Vector3d>& O_compact,
     std::sort(delete_patch.begin(), delete_patch.end());
     // update information
     //  update valence
-    valence[v1] = 4;
-    valence[v2] = 4;
+    if (size1 == 1 && size2 == 1) {
+        valence[v1] = 4;
+        valence[v2] = 4;
+    }
+    if (size1 == 2 && size2 == 0) {
+        valence[v1] = 6;
+        valence[v2] = 6;
+    }
     // update singularity
 
     std::vector<int> temp_singularity;
@@ -6413,6 +6444,14 @@ void Optimizer::sin_ft(std::vector<Vector3d>& O_compact,
         if (all_singularity[i] == v1) continue;
         if (all_singularity[i] == v2) continue;
         temp_singularity.push_back(all_singularity[i]);
+    }
+    if (size1 == 2 && size2 == 0) {
+        if (renew[v1] == v2) {
+            temp_singularity.push_back(v2);
+        }
+        else {
+            temp_singularity.push_back(v1);
+        }
     }
     all_singularity = temp_singularity;
     // update collapse_patch
@@ -6503,6 +6542,22 @@ void Optimizer::sin_ft(std::vector<Vector3d>& O_compact,
             }
         }
     }
+    for (int i = 0; i < two_sin_patch.size(); ++i) {
+        int n = two_sin_patch[i];
+        for (int k = 0; k < delete_patch.size(); ++k) {
+            if (k == delete_patch.size() - 1) {
+                if (n > delete_patch[k]) {
+                    two_sin_patch[i] = n - k - 1;
+                }
+            }
+            else {
+                if (n > delete_patch[k] && n < delete_patch[k + 1]) {
+                    two_sin_patch[i] = n - k - 1;
+                    break;
+                }
+            }
+        }
+    }
     std::vector<std::vector<std::vector<int>>> temp;
     std::vector<std::vector<int>> temp1;
     for (int i = 0; i < temp_relative_point.size(); ++i) {
@@ -6542,39 +6597,42 @@ void Optimizer::match_patch(int i, int j, int v, std::vector<int>& edge_collapse
         v1 = v2;
         v2 = temp;
     }
-    // Find which of v's 4 sides IS the matched boundary edge (v1,v2) exactly
-    // (both endpoints, not just one) and collapse its opposite side onto it.
-    // The previous logic branched on comparing side-0 vs side-1 length and
-    // then searched only that guessed pair {0,2} or {1,3} for a single
-    // endpoint matching v1 - when the true boundary edge actually belongs to
-    // the OTHER pair, but one of its endpoints happens to coincide with an
-    // endpoint of a side in the guessed pair (sharing a corner vertex, as
-    // any two adjacent sides of a quad do), it would spuriously match and
-    // collapse the wrong pair of sides entirely. Confirmed empirically on a
-    // disc mesh at magnitude_factor 1.6 (OMP_NUM_THREADS=1, matching the
-    // frozen test fixture exactly): patch 4's sides are
-    // 21->101(len3)/101->114(len2)/114->111(len3)/111->21(len2); the actual
-    // boundary edge is v1=101,v2=114 (side 1, len 2), but side 0's length
-    // (3) > side 1's length (2) sent it down the "search pair {0,2}" branch,
-    // where side 0 (21->101) matches v1=101 at its OWN endpoint (purely
-    // because side 0 and side 1 share corner vertex 101) - collapsing the
-    // long pair {0,2} instead of the short pair {1,3} that v1,v2 actually
-    // belong to, folding the patch across the wrong axis and leaving a gap.
-    // Searching all 4 sides for a full (v1,v2) edge match, as the
-    // equal-length case already did, picks the correct pair regardless of
-    // side lengths.
-    for (int k = 0; k < collapse_patch[v].size(); ++k) {
-        if (collapse_patch[v][k][0] == v1 &&
-            collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v2) {
-            no_need_edge = collapse_patch[v][k];
-            need_collapse_edge = collapse_patch[v][(k + 2) % 4];
-            break;
+    if (collapse_patch[v][0].size() > collapse_patch[v][1].size()) {
+        if (collapse_patch[v][0][0] == v1 ||
+            collapse_patch[v][0][collapse_patch[v][0].size() - 1] == v1) {
+            no_need_edge = collapse_patch[v][0];
+            need_collapse_edge = collapse_patch[v][2];
         }
-        if (collapse_patch[v][k][0] == v2 &&
-            collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v1) {
-            no_need_edge = collapse_patch[v][k];
-            need_collapse_edge = collapse_patch[v][(k + 2) % 4];
-            break;
+        if (collapse_patch[v][2][0] == v1 ||
+            collapse_patch[v][2][collapse_patch[v][2].size() - 1] == v1) {
+            no_need_edge = collapse_patch[v][2];
+            need_collapse_edge = collapse_patch[v][0];
+        }
+    } else if (collapse_patch[v][0].size() < collapse_patch[v][1].size()) {
+        if (collapse_patch[v][1][0] == v1 ||
+            collapse_patch[v][1][collapse_patch[v][1].size() - 1] == v1) {
+            no_need_edge = collapse_patch[v][1];
+            need_collapse_edge = collapse_patch[v][3];
+        }
+        if (collapse_patch[v][3][0] == v1 ||
+            collapse_patch[v][3][collapse_patch[v][3].size() - 1] == v1) {
+            no_need_edge = collapse_patch[v][3];
+            need_collapse_edge = collapse_patch[v][1];
+        }
+    } else {
+        for (int k = 0; k < collapse_patch[v].size(); ++k) {
+            if (collapse_patch[v][k][0] == v1 &&
+                collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v2) {
+                no_need_edge = collapse_patch[v][k];
+                need_collapse_edge = collapse_patch[v][(k + 2) % 4];
+                break;
+            }
+            if (collapse_patch[v][k][0] == v2 &&
+                collapse_patch[v][k][collapse_patch[v][k].size() - 1] == v1) {
+                no_need_edge = collapse_patch[v][k];
+                need_collapse_edge = collapse_patch[v][(k + 2) % 4];
+                break;
+            }
         }
     }
     for (int i = 0; i < no_need_edge.size(); ++i) {
@@ -6761,32 +6819,6 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
         }
     }
     int number = need_collapse[n];
-    // A chain that closes into a loop can have two distinct, correctly-detected
-    // transition pairs in need_collapse_part[number] that meet at a shared seam
-    // patch (see the matching note at opq_pair_count below, in the Vect-building
-    // section of this function, for the full explanation and a concrete repro).
-    // That seam patch sits at a pair BOUNDARY (the begin of one pair, the end of
-    // the other) by construction, since the segmentation walks forward looking
-    // for singular/non-singular transitions and a patch straddling two
-    // singularities naturally lands at the edge of both detected ranges, never
-    // their interior. number_seen_in_pair (built here) marks which patch
-    // indices are such a seam patch - touched by more than one of this chain's
-    // own pairs - so the s-loop below (search for is_seam_patch) can skip
-    // writing new O_compact positions for it on every encounter, instead of
-    // forcing it through position-interpolation math that assumes every patch
-    // in a pair is one slice of that pair's own single continuous boundary
-    // strip, an assumption the seam patch does not satisfy (see the full
-    // explanation and empirical verification at is_seam_patch's use below).
-    std::vector<int> number_seen_in_pair(assist_patch.size(), 0);
-    for (int i = 0; i < need_collapse_part[number].size(); ++i) {
-        if (i % 2 == 1) continue;
-        int begin = need_collapse_part[number][i];
-        int end = need_collapse_part[number][i + 1];
-        for (int k = begin; k < end + 1; ++k) {
-            int pa = layer[number][k];
-            if (pa >= 0 && pa < (int)number_seen_in_pair.size()) number_seen_in_pair[pa] += 1;
-        }
-    }
     for (int i = 0; i < need_collapse_part[number].size(); ++i) {
         if (i % 2 == 1) continue;
         int begin = need_collapse_part[number][i];
@@ -6808,8 +6840,6 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
         }
         for (int s = begin; s < end + 1; ++s) {
             int pa = layer[number][s];
-            bool is_seam_patch =
-                pa >= 0 && pa < (int)number_seen_in_pair.size() && number_seen_in_pair[pa] > 1;
             std::vector<int> edge1, edge2;
             int singularity_vertex;
             int v1, v2, v3, v4;
@@ -6835,84 +6865,43 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
                     break;
                 }
             }
-            // No matching boundary found for this patch (e.g. pa's edges were
-            // already renumbered/collapsed by an earlier step) - edge1 stays
-            // empty and edge1[0] below would be an out-of-bounds read. Nothing
-            // correct can be computed for this chain step either way, so skip it.
-            if (edge1.empty()) continue;
-            // Shared seam patch (see opq_pair_count's note where it is first
-            // computed, in the Vect-building section below, for the full
-            // explanation and a concrete repro): this patch is not actually
-            // part of a single continuous boundary strip being subdivided - it
-            // is the unrelated patch where two distinct, independently-detected
-            // transition pairs of this same closed-loop chain happen to meet.
-            // Running it through the position-interpolation math below
-            // (O_compact[o]=O_compact[edge1[j]]+(b/total_size)*direction, which
-            // assumes pa's own edge length is one slice of the WHOLE pair's
-            // combined length) collapses its two real, distinct corners toward
-            // nearly the same point, because total_size sums in every OTHER
-            // patch of the pair too, making pa's own slice of [0,1] tiny
-            // relative to its true edge length - producing a near-zero-area
-            // sliver patch even though collapse_patch[pa] itself is a normal,
-            // non-degenerate quad (verified empirically: O_compact for this
-            // patch's four corners, read at this function's very entry, before
-            // any write in this function has run, already equals the original
-            // quad-mesh coordinates exactly - nothing upstream corrupted them;
-            // this interpolation loop is the only place that does). Fix: still
-            // derive inner_vertex/inner_vertex_ from edge1/edge2 below (needed
-            // so the NEXT patch in this pair, if any, gets a correct
-            // singularity_vertex handoff) and still advance b by the number of
-            // positions this patch would have contributed (needed so a LATER
-            // patch in this pair keeps the same b/total_size fractions it
-            // would have had - this only matters when the seam patch is at
-            // begin, since nothing follows it in this pair when it is at end),
-            // but skip writing any new O_compact/renew value for it, leaving
-            // its already-correct original coordinates untouched.
             int inner_vertex;
             if (singularity_vertex == edge1[0]) {
                 inner_vertex = edge1[edge1.size() - 1];
                 inner_vertex_ = edge1[edge1.size() - 1];
-                if (is_seam_patch) {
-                    b += (int)edge1.size() - (s == begin ? 0 : 1);
-                } else {
-                    for (int j = 0; j < edge1.size(); ++j) {
-                        if (s != begin && j == 0) continue;
-                        Vector3d direction =
-                            O_compact[edge2[edge2.size() - 1 - j]] - O_compact[edge1[j]];
-                        Vector3d position =
-                            O_compact[edge1[j]] + (double)b * direction / (double)total_size;
-                        b += 1;
-                        int o1 = edge1[j];
-                        int o2 = edge2[edge2.size() - 1 - j];
-                        if (renew[o2] == -1) {
-                            renew[o2] = o1;
-                        }
-                        O_compact[o2] = position;
-                        O_compact[o1] = position;
+                for (int j = 0; j < edge1.size(); ++j) {
+                    if (s != begin && j == 0) continue;
+                    Vector3d direction =
+                        O_compact[edge2[edge2.size() - 1 - j]] - O_compact[edge1[j]];
+                    Vector3d position =
+                        O_compact[edge1[j]] + (double)b * direction / (double)total_size;
+                    b += 1;
+                    int o1 = edge1[j];
+                    int o2 = edge2[edge2.size() - 1 - j];
+                    if (renew[o2] == -1) {
+                        renew[o2] = o1;
                     }
+                    O_compact[o2] = position;
+                    O_compact[o1] = position;
                 }
             } else {
                 singularity_vertex = edge1[0];
                 inner_vertex = edge1[edge1.size() - 1];
                 inner_vertex_ = edge2[0];
-                if (is_seam_patch) {
-                    b += (int)edge2.size() - (s == begin ? 0 : 1);
-                } else {
-                    for (int j = 0; j < edge2.size(); ++j) {
-                        if (s != begin && j == 0) continue;
-                        Vector3d direction =
-                            O_compact[edge1[j]] - O_compact[edge2[edge2.size() - 1 - j]];
-                        Vector3d position = O_compact[edge2[edge2.size() - 1 - j]] +
-                                            (double)b * direction / (double)total_size;
-                        b += 1;
-                        int o1 = edge2[edge2.size() - 1 - j];
-                        int o2 = edge1[j];
-                        if (renew[o2] == -1) {
-                            renew[o2] = o1;
-                        }
-                        O_compact[o2] = position;
-                        O_compact[o1] = position;
+                for (int j = 0; j < edge2.size(); ++j) {
+                    if (s != begin && j == 0) continue;
+                    Vector3d direction =
+                        O_compact[edge1[j]] - O_compact[edge2[edge2.size() - 1 - j]];
+                    Vector3d position = O_compact[edge2[edge2.size() - 1 - j]] +
+                                        (double)b * direction / (double)total_size;
+                    b += 1;
+                    int o1 = edge2[edge2.size() - 1 - j];
+                    int o2 = edge1[j];
+                    if (renew[o2] == -1) {
+                        renew[o2] = o1;
                     }
+                    O_compact[o2] = position;
+                    O_compact[o1] = position;
                 }
             }
         }
@@ -7304,48 +7293,12 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
         Vect.push_back(relative_double[i]);
     }
     int opq = need_collapse[n];
-    // A chain that closes into a loop (relative_point[opq].front()[0] ==
-    // relative_point[opq].back()[3]) can produce two distinct, correctly-detected
-    // transition pairs in need_collapse_part[opq] that both touch the same patch
-    // index sitting right at the loop's seam (e.g. chain 0 on a disc mesh at
-    // magnitude_factor 1.4: pairs (1,4) and (5,8) in layer[opq]={2 3 16 8 6 5 10
-    // 14 3 1} both include index 1/8 -> patch 3). double_following/can (built
-    // from following_collapse, the segments OUTSIDE every pair) only catches
-    // duplicates shared BETWEEN different chains, never a duplicate shared
-    // between two pairs of the SAME chain's own need_collapse_part, so such a
-    // seam patch never gets a replacement built into new_patch, yet still gets
-    // pushed into Vect by every pair that touches it - once excluded there, it
-    // is dropped from patch_compact below (matrix) with nothing to replace it,
-    // a "silently dropped quad-mesh face" / island in the final decomposition.
-    // Fix, at the exclusion point: first count how many of opq's own pairs
-    // touch each patch index; a patch touched by more than one pair is a seam
-    // patch like this and must NOT be pushed into Vect at all (on any
-    // occurrence), so it survives into matrix via its one surviving
-    // assist_patch[i]/patch_compact[i] entry (the i-indexed loop a few lines
-    // down) instead of being dropped with nothing to replace it. Its own
-    // vertices were already correctly collapsed in-place by the (begin,end)
-    // processing loop above (O_compact writes, not renew[]), so no further
-    // vertex-position fix-up is needed here, only keeping the patch itself.
-    std::vector<int> opq_pair_count(assist_patch.size(), 0);
     for (int i = 0; i < need_collapse_part[opq].size(); ++i) {
         if (i % 2 == 1) continue;
         int begin = need_collapse_part[opq][i];
         int end = need_collapse_part[opq][i + 1];
         for (int j = begin; j < end + 1; ++j) {
-            int pa = layer[opq][j];
-            if (pa >= 0 && pa < (int)opq_pair_count.size()) {
-                opq_pair_count[pa] += 1;
-            }
-        }
-    }
-    for (int i = 0; i < need_collapse_part[opq].size(); ++i) {
-        if (i % 2 == 1) continue;
-        int begin = need_collapse_part[opq][i];
-        int end = need_collapse_part[opq][i + 1];
-        for (int j = begin; j < end + 1; ++j) {
-            int pa = layer[opq][j];
-            if (pa >= 0 && pa < (int)opq_pair_count.size() && opq_pair_count[pa] > 1) continue;
-            Vect.push_back(pa);
+            Vect.push_back(layer[opq][j]);
         }
     }
     /*for (int i = 0; i < delete_patch.size(); ++i) {
@@ -7547,10 +7500,7 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
     std::vector<int> n_c;
     std::vector<std::vector<int>> n_c_p(relative_point.size());
     for (int i = need_collapse[n] + 1; i < relative_point.size(); ++i) {
-        // r_p keeps empty placeholder entries (for layers with no patches, pushed
-        // above) to stay index-aligned with layer; skip those too, not just size 1,
-        // since relative_point[i][0] below is otherwise an out-of-bounds read.
-        if (relative_point[i].size() == 0 || relative_point[i].size() == 1) continue;
+        if (relative_point[i].size() == 1) continue;
         int v1 = relative_point[i][0][0];
         int v2 = relative_point[i][0][1];
         int v3 = relative_point[i][0][2];
@@ -8368,7 +8318,7 @@ void Optimizer::optimize_positions_dynamic(
             }
         }
     }
-    for (int iteration = 0; iteration < 100; ++iteration) {
+    for (int iteration = 0; iteration < 5; ++iteration) {
         for (int i = 0; i < adj_compact.size(); ++i) {
             if (compact_boundary_constraints.count(i) == 1 ||
                 compact_sharp_constraints.count(i) == 1)
@@ -8997,40 +8947,15 @@ void Optimizer::collapse_boundary(std::vector<Vector3d>& O_compact,
     std::vector<int> position;
     std::vector<int> renew(O_compact.size(), -1);
     std::vector<int> delete_patch;
-    // Collapse every non-conflicting chain in layer, not just index 2 - each
-    // one_layer entry already represents a thin (collapse_patch[...].size() <= 5)
-    // strip by construction (see the layer-building loop above extract_patch's
-    // call into this function), so there is nothing specific to index 2; a fixed
-    // index was an unwarranted assumption that silently no-ops whenever the
-    // collapsible chain lands elsewhere (e.g. layer.size() == 1), leaving
-    // degenerate sliver patches in the output. However, different chains can
-    // share a patch index (collapse_patch_edge only marks the specific edge
-    // traced, not every edge of a patch), so collapsing all chains in the same
-    // call can over-collapse; claim each chain's patches up front and skip any
-    // later chain that would double-claim one, so only a maximal
-    // non-conflicting set is collapsed per call (remaining chains, if any,
-    // collapse on a subsequent call once extract_patch's loop re-derives layer).
-    std::vector<bool> claimed(collapse_patch.size(), false);
-    std::vector<bool> chain_collapsed(layer.size(), false);
     for (int i = 0; i < layer.size(); ++i) {
-        bool conflicts = false;
-        for (int j = 0; j < layer[i].size(); ++j) {
-            if (layer[i][j] >= 0 && layer[i][j] < (int)claimed.size() && claimed[layer[i][j]]) {
-                conflicts = true;
-                break;
-            }
-        }
-        if (conflicts) continue;
-        chain_collapsed[i] = true;
+        cout << layer[i].size() << "\n";
+        if (i != 2) continue;
         for (int j = 0; j < layer[i].size(); ++j) {
             delete_patch.push_back(layer[i][j]);
-            if (layer[i][j] >= 0 && layer[i][j] < (int)claimed.size()) {
-                claimed[layer[i][j]] = true;
-            }
         }
     }
     for (int i = 0; i < relative_point.size(); ++i) {
-        if (!chain_collapsed[i]) continue;
+        if (i != 2) continue;
         for (int j = 0; j < relative_point[i].size(); ++j) {
             int v1, v2;
             v1 = relative_point[i][j][3];
@@ -9052,19 +8977,6 @@ void Optimizer::collapse_boundary(std::vector<Vector3d>& O_compact,
                 if (renew[o2] == -1) {
                     renew[o2] = o1;
                 }
-            }
-        }
-    }
-    // Remap all_singularity through renew, same as sin_fft/sin_ttt/sin_ft do for
-    // their own vertex merges - otherwise all_singularity keeps referring to
-    // vertex ids that no longer exist (or now mean something else) once this
-    // collapse runs, causing out-of-bounds/misdirected reads in later calls that
-    // still index O_compact/renew by old all_singularity entries.
-    for (int i = 0; i < (int)renew.size(); ++i) {
-        if (renew[i] == -1) continue;
-        for (int j = 0; j < (int)all_singularity.size(); ++j) {
-            if (all_singularity[j] == i) {
-                all_singularity[j] = renew[i];
             }
         }
     }
@@ -9145,18 +9057,17 @@ void Optimizer::collapse_boundary(std::vector<Vector3d>& O_compact,
     }
     std::cout << "finish"
               << "\n";
-    // relative_point/layer must stay the same length and index-aligned (the caller
-    // indexes both by the same i); drop an entry only when BOTH sides agree it is
-    // empty, rather than filtering each independently, which could otherwise leave
-    // them different lengths and cause the caller to read past layer's new size.
     std::vector<std::vector<std::vector<int>>> temp;
     std::vector<std::vector<int>> temp1;
-    for (int i = 0; i < temp_relative_point.size() && i < temp_layer.size(); ++i) {
-        if (temp_relative_point[i].size() == 0 && temp_layer[i].size() == 0) continue;
+    for (int i = 0; i < temp_relative_point.size(); ++i) {
+        if (temp_relative_point[i].size() == 0) continue;
         temp.push_back(temp_relative_point[i]);
-        temp1.push_back(temp_layer[i]);
     }
     relative_point = temp;
+    for (int i = 0; i < temp_layer.size(); ++i) {
+        if (temp_layer[i].size() == 0) continue;
+        temp1.push_back(temp_layer[i]);
+    }
     layer = temp1;
 }
 void Optimizer::optimize_positions_fixed(
@@ -9177,22 +9088,6 @@ void Optimizer::optimize_positions_fixed(
     auto& holeposition = mRes.mholeposition;
     auto& linetype = mRes.mlinetype;
     auto& unchangeB = mRes.munchangeB;
-
-    
-    /*std::vector<double> holeposition1{};
-    for (int i = 0; i < V.cols(); ++i) {
-        double a1 = V.col(i)[0];
-        double a2 = V.col(i)[1];
-        double a3 = V.col(i)[2];
-        holeposition1.push_back(a1);
-        holeposition1.push_back(a2);
-        holeposition1.push_back(a3);
-    }
-    for (int i = 0; i < holeposition.size(); ++i) {
-        if (holeposition[i] != holeposition1[i]) {
-            int asasa = 1;
-        }
-    }*/
     
 
     DisajointTree tree(V.cols());
