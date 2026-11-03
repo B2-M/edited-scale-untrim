@@ -66,14 +66,17 @@ Measured with AddressSanitizer on 14 planar meshes at `magnitude_factor` 1.0 to 
   - corner index out of range in `optimize_positions_dynamic`
   - chain walk that does not terminate
   - solver NaN
-- **Coarse inputs fail more often.** Quad count follows input density, so subdivide very coarse meshes first.
+- **NURBS refinement can diverge.** With `run_from: 3`, 87 of 88 valid layouts fit in one iteration with the right area. On `rotor_loop2` at factor 1.1 the first fitting error (0.014) is above `fit_tolerance`, so the fit refines, and after four iterations the STEP shell has 322 times the input's area, still with exit code 0. A `fit_tolerance` above the first error avoids this, and `toStep` in the parent project checks the area. The cause of the divergence is unknown.
+- **Coarse inputs fail more often.** Quad count follows input density. One midpoint subdivision helps on coarse meshes (`hook_x0` went from 1 to 8 valid factors of 11, `disc_coarse` from 2 to 10), but not on the rotors, where it lowered the valid count from 1 to 0, and a second one gave no further gain. `generatePatchLayout` in the parent project therefore tries both densities.
+- **Results are chaotic in the input.** Two hook meshes differing by at most 3.6e-15 gave 10 and 8 valid factors, so validate every result rather than relying on a factor that worked before.
+- **Subdividing exposes more failures.** On subdivided meshes with holes and on the rotors, Release runs also segfaulted (5 runs) and timed out at 240 s (3 runs). A run on `disc_fine` subdivided once exited 0 with point id 32766 in `patch.txt`, which has 3293 points.
 - **Quality varies by factor.** A valid layout at one `magnitude_factor` says little about the next one, so try several and validate each result.
 
 `extract_patch` keeps parallel vectors index-aligned by convention only, which is the common source of its bugs.
 
 ## Testing
 
-`scripts/island_check.py` in the parent project checks patch coverage on planar meshes in the XY plane.
+`validatePatchLayout` in `scripts/patchLayout.py` of the parent project checks a layout on a planar mesh in any plane, and is what `generatePatchLayout` uses. `scripts/island_check.py` there is a simpler coverage check for the XY plane.
 
 Run experiments under a memory cap, because a run must never be able to exhaust the machine. The limit in `main()` does not apply to ASan builds, and uncapped ASan runs have crashed the desktop session.
 
