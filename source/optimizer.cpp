@@ -15,6 +15,7 @@
 #include <iostream>
 #include <memory>
 #include <queue>
+#include <set>
 #include <unordered_map>
 #include "config.hpp"
 #include "field-math.hpp"
@@ -871,11 +872,17 @@ void Optimizer::extract_patch(
             patch_line.push_back(line);
         }
     }
+    // E2E_compact still describes the faces removed at the start of this function, so its indices
+    // do not match F_compact here. A boundary edge is one without its opposite in the current faces.
+    std::set<std::pair<int, int>> directed_edges;
+    for (int i = 0; i < 4 * F_compact.size(); ++i) {
+        directed_edges.insert({F_compact[i / 4][i % 4], F_compact[i / 4][(i + 1) % 4]});
+    }
     std::vector<int> boundaryvertex;
     for (int i = 0; i < 4 * F_compact.size(); ++i) {
-        if (E2E_compact[i] == -1) {
-            int u0 = F_compact[i / 4][i % 4];
-            int u1 = F_compact[i / 4][(i + 1) % 4];
+        int u0 = F_compact[i / 4][i % 4];
+        int u1 = F_compact[i / 4][(i + 1) % 4];
+        if (directed_edges.count({u1, u0}) == 0) {
             boundaryvertex.push_back(u0);
             boundaryvertex.push_back(u1);
         }
@@ -2414,6 +2421,9 @@ void Optimizer::extract_patch(
         for (int i = 0; i < relative_point.size(); ++i) {
             if (relative_point.size() == 1) continue;
             for (int j = 0; j < relative_point[i].size(); ++j) {
+                if (relative_point[i][j].size() < 2) {
+                    throw std::runtime_error("extract_patch: chain collapse found an empty layer");
+                }
                 int v1 = relative_point[i][j][0];
                 int v2 = relative_point[i][j][1];
                 int a = 0;
@@ -6910,6 +6920,9 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
                     break;
                 }
             }
+            if (edge1.empty()) {
+                throw std::runtime_error("sin_mismatching: no patch side joins the chain vertices");
+            }
             int inner_vertex;
             if (singularity_vertex == edge1[0]) {
                 inner_vertex = edge1[edge1.size() - 1];
@@ -7119,6 +7132,9 @@ void Optimizer::sin_mismatching(std::vector<std::vector<int>>& need_collapse_par
         std::vector<std::vector<int>> matrix_patch1 = assist_patch[a];
         std::vector<std::vector<int>> matrix_patch2 = assist_patch[a1];
         std::vector<std::vector<int>> total_matrix;
+        if (assist_patch[a].empty() || assist_patch[a1].empty()) {
+            throw std::runtime_error("sin_mismatching: chain collapse found no matching patch");
+        }
         int v1, v2, v3, v4;
         v1 = assist_patch[a][0][0];
         v2 = assist_patch[a][0][assist_patch[a][0].size() - 1];

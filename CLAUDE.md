@@ -61,11 +61,12 @@ Measured with AddressSanitizer on 14 planar meshes at `magnitude_factor` 1.0 to 
 
 - **Domains with holes are not properly supported.** The no-singularity case in `extract_patch` assumes a rectangle with four boundary sides, and an annulus has none. It got 0 of 11 valid; a plate with a hole got 2 of 11.
 - **The rotor cross-sections** in the parent project's `src/tempDir/Loop1` and `Loop2` got only 1 of 11 valid each.
+- **Patches that do not join are now the main cause on the rotors.** With the boundary fixes, runs that used to stop at the boundary lookup now finish, but mostly as invalid layouts: all 20 invalid `rotor_loop1` layouts have interior edges not shared by two cells.
 - **Open failure causes**, as reported on stderr:
-  - boundary lookup failure (`unordered_map::at` or a vector range check in `extract_patch`), which also affects meshes without holes; the cause is unknown
+  - chain collapse in `sin_mismatching` and `extract_patch` finding no matching patch or layer (these and the rest of the chain collapse index `collapse_patch` and `relative_point` without checks, so other inputs still segfault or read freed memory, for example at the `collapse_patch` reads after `cannot_collapse` is declared)
+  - no singularities and fewer than four boundary sides
   - corner index out of range in `optimize_positions_dynamic`
-  - chain walk that does not terminate
-  - solver NaN
+  - solver NaN, which exits 0 without a `patch.txt`
 - **NURBS refinement can diverge.** With `run_from: 3`, 87 of 88 valid layouts fit in one iteration with the right area. On `rotor_loop2` at factor 1.1 the first fitting error (0.014) is above `fit_tolerance`, so the fit refines, and after four iterations the STEP shell has 322 times the input's area, still with exit code 0. A `fit_tolerance` above the first error avoids this, and `toStep` in the parent project checks the area. The cause of the divergence is unknown.
 - **Coarse inputs fail more often.** Quad count follows input density. One midpoint subdivision helps on coarse meshes (`hook_x0` went from 1 to 8 valid factors of 11, `disc_coarse` from 2 to 10), but not on the rotors, where it lowered the valid count from 1 to 0, and a second one gave no further gain. `generatePatchLayout` in the parent project therefore tries both densities.
 - **Results are chaotic in the input.** Two hook meshes differing by at most 3.6e-15 gave 10 and 8 valid factors, so validate every result rather than relying on a factor that worked before.

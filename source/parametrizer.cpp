@@ -215,7 +215,17 @@ void Parametrizer::ComputeIndexMap(int with_scale) {
     }
     std::vector<int> boundary_o(O_compact.size(), 0);
     std::map<int, std::pair<Vector3d, Vector3d>> compact_boundary_constraints;
+    // FixValence can split a boundary vertex so that a copy, which inherits Vset, is surrounded by
+    // faces. Such a copy is not on the boundary, even though its Vset has boundary vertices.
+    std::vector<int> has_boundary_edge(O_compact.size(), 0);
+    for (int i = 0; i < 4 * F_compact.size(); ++i) {
+        if (E2E_compact[i] == -1) {
+            has_boundary_edge[F_compact[i / 4][i % 4]] = 1;
+            has_boundary_edge[F_compact[i / 4][(i + 1) % 4]] = 1;
+        }
+    }
     for (int i = 0; i < Vset.size(); ++i) {
+        if (!has_boundary_edge[i]) continue;
         int boundaryv = -1;
         for (auto& p : Vset[i]) {
             if (Boundary_constraints.count(p)) {
