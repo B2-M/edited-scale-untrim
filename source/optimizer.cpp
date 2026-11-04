@@ -8418,7 +8418,11 @@ void Optimizer::optimize_positions_dynamic(
         if (compact_boundary_constraints.count(v4)) {
             nop += 1;
         }
-        if (nop > 3) {
+        // A face with four constrained vertices can be a sliver between two boundary lines, but also
+        // a normal cell spanning a thin part of the domain, so only flipped or very small ones go.
+        Vector3d face_area = 0.5 * (O_compact[v3] - O_compact[v1]).cross(O_compact[v4] - O_compact[v2]);
+        double signed_area = face_area.dot(Vector3d(N.col(Vset[v1][0])));
+        if (nop > 3 && signed_area < 0.1 * mScale * mScale) {
             F_compact[i][0] = -1;
             F_compact[i][1] = -1;
             F_compact[i][2] = -1;

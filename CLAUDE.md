@@ -61,7 +61,8 @@ Measured with AddressSanitizer on 14 planar meshes at `magnitude_factor` 1.0 to 
 
 - **Domains with holes are not properly supported.** The no-singularity case in `extract_patch` assumes a rectangle with four boundary sides, and an annulus has none. It got 0 of 11 valid; a plate with a hole got 2 of 11.
 - **The rotor cross-sections** in the parent project's `src/tempDir/Loop1` and `Loop2` got only 1 of 11 valid each.
-- **Patches that do not join are now the main cause on the rotors.** With the boundary fixes, runs that used to stop at the boundary lookup now finish, but mostly as invalid layouts: all 20 invalid `rotor_loop1` layouts have interior edges not shared by two cells.
+- **Patches can lose cells that the quad mesh covers.** In 18 of 286 runs on 14 planar meshes, `quad.vtk` was fine but the patches were not. All cells were still covered after the first grids were built in 14 of them, so the chain collapse lost the rest (6 in the `sin_*` edits, 8 in `sin_mismatching`). In the other 4, cells were already missing from the first grids. The causes are unknown.
+- **`quad.vtk` itself can be wrong.** In 19 of those runs it lost area or filled a hole (`plate_hole`, exactly the hole's area). `generateQuadMesh` in the parent project does not check this.
 - **Open failure causes**, as reported on stderr:
   - chain collapse in `sin_mismatching` and `extract_patch` finding no matching patch or layer (these and the rest of the chain collapse index `collapse_patch` and `relative_point` without checks, so other inputs still segfault or read freed memory, for example at the `collapse_patch` reads after `cannot_collapse` is declared)
   - no singularities and fewer than four boundary sides
