@@ -14,6 +14,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <array>
 #include <queue>
 #include <set>
 #include <unordered_map>
@@ -582,6 +583,92 @@ void Optimizer::optimize_positions(Hierarchy& mRes, int with_scale) {
 
 #endif
     }
+namespace {
+
+// The faces of a planar mesh, as 2D polygons in the mesh's plane.
+struct PlanarFaces {
+    Vector3d origin, u, v;
+    double tolerance = 0;
+    std::vector<Vector2d> centroids;
+    bool planar = false;
+
+    Vector2d project(const Vector3d& p) const { return Vector2d((p - origin).dot(u), (p - origin).dot(v)); }
+
+    PlanarFaces(const std::vector<Vector4i>& F, const std::vector<Vector3d>& O) {
+        if (F.empty()) return;
+        Vector3d normal = Vector3d::Zero();
+        Vector3d min_corner = O[F[0][0]], max_corner = O[F[0][0]];
+        for (auto& f : F) {
+            normal += (O[f[2]] - O[f[0]]).cross(O[f[3]] - O[f[1]]);
+            for (int k = 0; k < 4; ++k) {
+                min_corner = min_corner.cwiseMin(O[f[k]]);
+                max_corner = max_corner.cwiseMax(O[f[k]]);
+            }
+        }
+        if (normal.norm() == 0) return;
+        normal.normalize();
+        origin = O[F[0][0]];
+        double size = (max_corner - min_corner).norm();
+        tolerance = 1e-6 * size;
+        for (auto& f : F) {
+            for (int k = 0; k < 4; ++k) {
+                if (std::abs((O[f[k]] - origin).dot(normal)) > 1e-4 * size) return;
+            }
+        }
+        u = normal.unitOrthogonal();
+        v = normal.cross(u);
+        for (auto& f : F) {
+            centroids.push_back(project(0.25 * (O[f[0]] + O[f[1]] + O[f[2]] + O[f[3]])));
+        }
+        planar = true;
+    }
+
+    // Whether the centroid of every face lies in a cell of the patches, within the tolerance.
+    bool coveredBy(const std::vector<std::vector<std::vector<int>>>& patches,
+                   const std::vector<Vector3d>& O) const {
+        std::vector<std::array<Vector2d, 4>> cells;
+        for (auto& patch : patches) {
+            for (int r = 0; r + 1 < patch.size(); ++r) {
+                for (int c = 0; c + 1 < std::min(patch[r].size(), patch[r + 1].size()); ++c) {
+                    int ids[4] = {patch[r][c], patch[r][c + 1], patch[r + 1][c + 1], patch[r + 1][c]};
+                    std::array<Vector2d, 4> cell;
+                    for (int k = 0; k < 4; ++k) {
+                        if (ids[k] < 0 || ids[k] >= O.size()) return false;
+                        cell[k] = project(O[ids[k]]);
+                    }
+                    cells.push_back(cell);
+                }
+            }
+        }
+        for (auto& point : centroids) {
+            bool covered = false;
+            for (int i = 0; i < cells.size() && !covered; ++i) covered = inside(point, cells[i]);
+            if (!covered) return false;
+        }
+        return true;
+    }
+
+    bool inside(const Vector2d& p, const std::array<Vector2d, 4>& cell) const {
+        bool result = false;
+        for (int i = 0; i < 4; ++i) {
+            const Vector2d& a = cell[i];
+            const Vector2d& b = cell[(i + 1) % 4];
+            double length = (b - a).norm();
+            if (length > 0 && p[0] >= std::min(a[0], b[0]) - tolerance && p[0] <= std::max(a[0], b[0]) + tolerance &&
+                p[1] >= std::min(a[1], b[1]) - tolerance && p[1] <= std::max(a[1], b[1]) + tolerance &&
+                std::abs((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) / length < tolerance) {
+                return true;
+            }
+            if ((a[1] > p[1]) != (b[1] > p[1]) && p[0] < a[0] + (p[1] - a[1]) / (b[1] - a[1]) * (b[0] - a[0])) {
+                result = !result;
+            }
+        }
+        return result;
+    }
+};
+
+}  // namespace
+
 void Optimizer::extract_patch(
     Hierarchy& mRes, MatrixXi& F, MatrixXd& V, MatrixXd& N, MatrixXd& Q,
     std::vector<std::vector<int>>& Vset, std::vector<Vector3d>& O_compact,
@@ -2407,6 +2494,24 @@ void Optimizer::extract_patch(
         std::vector<int> two_sin_patch;
         std::vector<std::vector<int>> two_sin;
         std::vector<int> two_sin_po;
+        // The chain collapse below simplifies the layout, but can lose cells or fail. On a planar mesh,
+        // keep the last layout that covers all faces, which has more patches but is usable.
+        const std::vector<Vector4i> first_faces = F_compact;
+        const std::vector<Vector3d> first_positions = O_compact;
+        const PlanarFaces planar_faces(first_faces, first_positions);
+        const bool can_fall_back = planar_faces.planar && planar_faces.coveredBy(patch_compact, O_compact);
+        std::vector<std::vector<std::vector<int>>> complete_patches = patch_compact;
+        std::vector<Vector3d> complete_positions = O_compact;
+        bool collapse_kept_coverage = true;
+        const auto update_complete_layout = [&]() {
+            if (!can_fall_back) return;
+            collapse_kept_coverage = planar_faces.coveredBy(patch_compact, O_compact);
+            if (collapse_kept_coverage) {
+                complete_patches = patch_compact;
+                complete_positions = O_compact;
+            }
+        };
+        try {
         std::vector<int> quad_v;
         for (int i = 0; i < thr_for_sin_patch.size(); ++i) {
             int n = thr_for_sin_patch[i];
@@ -2540,6 +2645,7 @@ void Optimizer::extract_patch(
                 }
             }
         }
+        update_complete_layout();
         std::vector<int> cannot_collapse;
         for (int i = 0; i < relative_point.size(); ++i) {
             if (relative_point[i].size() == 1) continue;
@@ -2959,7 +3065,17 @@ void Optimizer::extract_patch(
                             need_collapse, all_singularity, collapse_patch, i, double_q,
                             boundary_o);
         }
-        if (collapsing_layer > 1) {
+        update_complete_layout();
+        } catch (const std::exception& e) {
+            if (!can_fall_back) throw;
+            collapse_kept_coverage = false;
+            std::cout << "extract_patch: chain collapse failed: " << e.what() << "\n";
+        }
+        if (can_fall_back && !collapse_kept_coverage) {
+            std::cout << "extract_patch: keeping the last layout that covers all faces\n";
+            patch_compact = complete_patches;
+            O_compact = complete_positions;
+        } else if (collapsing_layer > 1) {
             size_n(patch_compact, O_compact, all_singularity, collapse_patch, boundary_o, collapsing_layer);
         }
     }
