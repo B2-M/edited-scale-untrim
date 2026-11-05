@@ -8,10 +8,14 @@ ScaleUntrim converts CAD models or triangle meshes into quad meshes, multi-patch
 
 `main` is based on the paper's Zenodo release (`IMS-XWei-ScaleUntrim-c47b41e`, "Scalable Field-Aligned Reparameterization for Trimmed NURBS"), imported in commit `4e58b58`. The commits after it add Linux support, the scripted interface and robustness fixes. To see only those changes, run `git diff 4e58b58 main`.
 
+**See [FINDINGS.md](FINDINGS.md)** for the bugs found, the design decisions, dead ends and open problems, and `TestingPatchLayouts.md` in the parent project for how to test a change.
+
 ## Remotes
 
 - `myfork` (`B2-M/edited-scale-untrim`): its `main` is what `scripts/scaleUntrimBuilder.py` in the parent project clones. Push `main` here with `git push myfork main`.
 - `origin` (`kendrickshepherd/edited-scale-untrim`): `origin/main` is still the pre-merge code at `9ce0591`. Local `main` tracks it, so a plain `git push` from `main` targets the wrong remote.
+
+The robustness work is on `merge_zenodo_paper`. Check with `git log myfork/main..merge_zenodo_paper` that it has reached `myfork/main`, because the parent project's builder deletes this folder and clones that branch, which would silently lose whatever is not there.
 
 ## Build and run
 
@@ -47,38 +51,40 @@ Parsed in `MergeFit::read_config_file` (`mergefit/source/merge_fit.cpp`), with d
 | `magnitude_factor` | Target quad size scaling. Values of 0 or below use the built-in 1.4. |
 | `quad_face_num` | **Overrides `magnitude_factor` unless it is 0.** Above 0 is a target quad count; below 0 uses `sqrt(area / vertex count)`. |
 | `magnitude` | When 1, scales quad size by input face count for large meshes (10k faces and up). |
-| `collapsing_layer` | At 1 the chain collapse in `size_n` is skipped. Above 1 runs it, giving fewer patches but more invalid layouts. |
+| `collapsing_layer` | At 1 only the chain collapse in `size_n` is skipped, while the `sin_*` steps still run. Above 1 runs it, giving fewer patches but more invalid layouts. |
 | `minimum_cost` | Use the minimum-cost-flow solver for the integer constraints. |
 | `preserve_sharp`, `angle_for_sharp` | Sharp-feature preservation and its angle. The angle also sets the boundary-corner threshold, and 60 reproduces the original value. `--sharp`/`--no-sharp` override `preserve_sharp`. |
 | `fix_hole`, `local_layer`, `smooth_iteration` | Mesh fixing. Only used at `run_from` 0 and 1. |
-| `fit_tolerance` | NURBS fitting tolerance. |
+| `fit_tolerance` | NURBS fitting tolerance, relative to the diagonal of the part. Refinement continues while the error is above it. |
 | `area_tolerance` | Only printed for comparison. |
 | `perform_mirror` | No effect: both branches set it to false. |
 
 ## Known limitations
 
-Measured with AddressSanitizer on 14 planar meshes at `magnitude_factor` 1.0 to 2.0 in steps of 0.1 (154 runs), one thread, `collapsing_layer: 1`, at commit `422c608`: 88 valid layouts, 24 invalid, 42 clean failures or no output, and no crashes or hangs. Validity meant no uncovered faces, area error within 2%, no flipped or overlapping cells, and patches joining without gaps.
+Measured on 18 planar meshes at `magnitude_factor` 1.0 to 2.0 in steps of 0.1, as given and subdivided once where under 10,000 triangles (363 Release runs), one thread, `collapsing_layer: 1`: 250 valid layouts, 83 invalid, 30 failed. Every mesh has a valid layout that passes STEP export. A few runs differ between binaries or output paths, because of the remaining memory errors. Validity means no uncovered faces, area error within 2%, no flipped or overlapping cells, and patches joining without gaps.
 
-- **Rings with irregular vertices remain weak.** A regular quad mesh of a domain with one hole has no corners, so `split_ring_into_patches` cuts it into two patches along mesh lines. This is automatic and only covers that regular case: an annulus mesh with irregular vertices goes through the normal patch extraction, where 7 of 22 annulus runs were invalid at the last measurement. A hole in a plate (15 of 22 valid) does not need it, because its mesh has irregular vertices anyway.
-- **The rotor cross-sections** in the parent project's `src/tempDir/Loop1` and `Loop2` got only 1 of 11 valid each.
-- **The chain collapse can lose cells.** It simplifies the layout but can drop cells that the quad mesh covers, or fail. On planar meshes, `extract_patch` therefore keeps the last layout that covers all faces, which has more patches. This rescued 18 of 286 runs on 14 planar meshes, including the first valid annulus layouts. Why the collapse loses cells is still unknown, and its segfaults cannot be caught this way. In some runs the first grids already miss cells, so nothing can be kept.
-- **`quad.vtk` can still be wrong on coarse or thin inputs.** `FixHoles` used to cap any boundary loop under 25 vertices, including holes of the domain and the outer boundary of coarse meshes, and now keeps loops that mostly lie on the input's boundary. Some `rotor_loop2` runs still lose 65% to 77% of the area, for an unknown reason. `generateQuadMesh` in the parent project rejects planar results whose area is off by more than 2%.
+- **Layouts with several holes are valid but fragmented.** `disc_2holes` has 93 patches on 383 cells and `plate_3holes` 42, while `plate_hole` has 8 and `plate_2holes` 19.
+- **Rings need a regular mesh to get a simple layout.** A regular quad mesh of a domain with one hole has no corners, so `split_ring_into_patches` cuts it into two patches along mesh lines. An annulus mesh with irregular vertices goes through normal patch extraction instead, and 7 of 22 annulus runs are invalid.
+- **Thin parts have few usable factors.** `rotor_loop1` is valid in 6 of 22 runs and `rotor_loop2` in 3 of 22. At coarse factors `rotor_loop2` becomes a strip one cell wide, or loses 65% to 77% of its area for an unknown reason. Long cell edges can cut across a curved thin tail.
+- **The chain collapse can lose cells or fail.** On planar meshes `extract_patch` therefore keeps the last layout that covers all faces, which has more patches. Why it loses cells is unknown. In some runs the first grids already miss cells, so nothing can be kept. Other surfaces have no such fallback.
+- **The chain collapse has memory errors.** It indexes `collapse_patch` and `relative_point` without checks, so some inputs segfault or read freed memory, and these cannot be caught.
 - **Open failure causes**, as reported on stderr:
-  - chain collapse in `sin_mismatching` and `extract_patch` finding no matching patch or layer (these and the rest of the chain collapse index `collapse_patch` and `relative_point` without checks, so other inputs still segfault or read freed memory, for example at the `collapse_patch` reads after `cannot_collapse` is declared)
-  - no singularities and fewer than four boundary sides
   - corner index out of range in `optimize_positions_dynamic`
+  - chain collapse in `sin_mismatching` and `extract_patch` finding no matching patch or layer, where no complete layout could be kept
+  - no singularities and fewer than four boundary sides, for a mesh that is not a regular ring
+  - patch not a rectangular grid in `Outputpatch`
   - solver NaN, which exits 0 without a `patch.txt`
-- **NURBS refinement can diverge.** On `rotor_loop2` at factor 1.1 the first fitting error (0.014, relative to the part's diagonal) is above `fit_tolerance`, so the fit refines, and after four iterations the error is 0.34 and the surface far too large. `MultiPatchFit::run` now keeps the best fit instead of the last one. The cause of the divergence is unknown.
-- **Coarse inputs fail more often.** Quad count follows input density. One midpoint subdivision helps on coarse meshes (`hook_x0` went from 1 to 8 valid factors of 11, `disc_coarse` from 2 to 10), but not on the rotors, where it lowered the valid count from 1 to 0, and a second one gave no further gain. `generatePatchLayout` in the parent project therefore tries both densities.
-- **Results are chaotic in the input.** Two hook meshes differing by at most 3.6e-15 gave 10 and 8 valid factors, so validate every result rather than relying on a factor that worked before.
-- **Subdividing exposes more failures.** On subdivided meshes with holes and on the rotors, Release runs also segfaulted (5 runs) and timed out at 240 s (3 runs). A run on `disc_fine` subdivided once exited 0 with point id 32766 in `patch.txt`, which has 3293 points.
-- **Quality varies by factor.** A valid layout at one `magnitude_factor` says little about the next one, so try several and validate each result.
+- **Exit code 0 can come with bad data,** such as a point id that does not exist or infinite coordinates in `patch.txt`, so always validate.
+- **NURBS refinement can diverge.** `MultiPatchFit::run` therefore keeps the best fit instead of the last one. The cause is unknown, and a tighter `fit_tolerance` can also make the area worse.
+- **Coarse inputs work less often.** Quad count follows input density, so `generatePatchLayout` in the parent project tries each mesh as given and subdivided once. A second subdivision gave no further gain.
+- **Results are chaotic in the input.** Two hook meshes differing by at most 3.6e-15 gave 10 and 8 valid factors, so try several factors and validate each result rather than relying on one that worked before.
+- **STEP files have not been opened in a CAD system.** Only the number of faces and the total area were checked.
 
 `extract_patch` keeps parallel vectors index-aligned by convention only, which is the common source of its bugs.
 
 ## Testing
 
-`validatePatchLayout` in `scripts/patchLayout.py` of the parent project checks a layout on a planar mesh in any plane, and is what `generatePatchLayout` uses. `scripts/island_check.py` there is a simpler coverage check for the XY plane.
+Follow `TestingPatchLayouts.md` in the parent project: `scripts/runPlanarLayoutSweep.py` there runs all test meshes and compares each run with a baseline. `validatePatchLayout` in `scripts/patchLayout.py` checks a layout on a planar mesh in any plane. `scripts/island_check.py` is a simpler coverage check for the XY plane.
 
 Run experiments under a memory cap, because a run must never be able to exhaust the machine. The limit in `main()` does not apply to ASan builds, and uncapped ASan runs have crashed the desktop session.
 
