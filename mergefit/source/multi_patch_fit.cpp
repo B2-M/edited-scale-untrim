@@ -276,6 +276,10 @@ void MultiPatchFit::run(const string& fn)
     cout << "Iteration: " << itr++ << endl;
     cout << "Fitting error: " << err / len_scl << endl;
 
+    // Refinement can make the fit diverge, so keep the best one and not simply the last one.
+    auto best_surfs = surfs;
+    double best_err = err;
+
     while (err > fit_tol * len_scl && itr < itr_max)
     {
         bool is_refine = refine();
@@ -293,8 +297,15 @@ void MultiPatchFit::run(const string& fn)
 //        visualize_surface_vtk(fn + "_" + to_string(itr));
         cout << "Iteration: " << itr++ << endl;
         cout << "Fitting error: " << err / len_scl << endl;
+
+        if (err < best_err)
+        {
+            best_surfs = surfs;
+            best_err = err;
+        }
     }
 
+    surfs = best_surfs;
     cout << "Surface fitting done!\n";
 }
 
