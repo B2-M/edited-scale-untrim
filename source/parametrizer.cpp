@@ -192,6 +192,7 @@ void Parametrizer::ComputeIndexMap(int with_scale) {
                                         sharp_constraints, sharp_edges, Boundary_vertices,
                                         Boundary_constraints, Boundary_edges, flag_adaptive_scale);
 
+    input_boundary_vertices = Boundary_vertices;
     AdvancedExtractQuad();
 
     FixValence();

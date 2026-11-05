@@ -171,6 +171,7 @@ class Parametrizer {
     std::vector<Vector3d> N_compact;
     std::vector<Vector4i> F_compact;
     std::set<std::pair<int, int>> Quad_edges;
+    std::set<int> input_boundary_vertices;
     std::vector<int> V2E_compact;
     std::vector<int> E2E_compact;
     VectorXi boundary_compact;

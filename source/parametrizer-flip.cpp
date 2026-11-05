@@ -177,7 +177,20 @@ void Parametrizer::FixHoles() {
         for (int j = 0; j < loop_edges.size(); ++j) {
             loop_vertices[j] = F_compact[loop_edges[j] / 4][loop_edges[j] % 4];
         }
-        if (loop_vertices.size() < 25) FixHoles(loop_vertices);
+        // A small loop is a defect of the extraction, unless it follows the boundary of the input,
+        // like a hole of the domain or the outer boundary of a coarse mesh.
+        int on_input_boundary = 0;
+        for (int v : loop_vertices) {
+            for (int fine_v : Vset[v]) {
+                if (input_boundary_vertices.count(fine_v)) {
+                    on_input_boundary += 1;
+                    break;
+                }
+            }
+        }
+        if (loop_vertices.size() < 25 && 2 * on_input_boundary < loop_vertices.size()) {
+            FixHoles(loop_vertices);
+        }
     }
 }
 
