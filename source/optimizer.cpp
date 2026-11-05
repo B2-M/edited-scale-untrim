@@ -585,6 +585,67 @@ void Optimizer::optimize_positions(Hierarchy& mRes, int with_scale) {
     }
 namespace {
 
+const int ring_patch_count = 2;
+
+// A regular quad mesh of a domain with one hole is a structured ring without any corner to start
+// from, so cut it along mesh lines into rectangular patches. Returns false for any other mesh.
+bool split_ring_into_patches(const std::vector<Vector4i>& F, int n_patches,
+                             std::vector<std::vector<std::vector<int>>>& patches) {
+    std::map<std::pair<int, int>, int> corner_of_edge;
+    for (int i = 0; i < F.size(); ++i) {
+        for (int k = 0; k < 4; ++k) corner_of_edge[{F[i][k], F[i][(k + 1) % 4]}] = 4 * i + k;
+    }
+    std::map<int, int> next_on_boundary;
+    int start = -1;
+    for (auto& edge : corner_of_edge) {
+        if (corner_of_edge.count({edge.first.second, edge.first.first})) continue;
+        if (next_on_boundary.count(edge.first.first)) return false;
+        next_on_boundary[edge.first.first] = edge.first.second;
+        if (start == -1) start = edge.first.first;
+    }
+    if (start == -1) return false;
+
+    // Each column of the grid runs across the ring, from one boundary edge to the other boundary.
+    std::vector<std::vector<int>> columns;
+    int u = start;
+    do {
+        if (!next_on_boundary.count(u) || columns.size() > F.size()) return false;
+        int v = next_on_boundary[u];
+        std::vector<int> column{u};
+        int a = u, b = v;
+        while (corner_of_edge.count({a, b})) {
+            if (column.size() > F.size()) return false;
+            int corner = corner_of_edge[{a, b}];
+            const Vector4i& face = F[corner / 4];
+            a = face[(corner + 3) % 4];
+            b = face[(corner + 2) % 4];
+            column.push_back(a);
+        }
+        if (!columns.empty() && column.size() != columns[0].size()) return false;
+        columns.push_back(column);
+        u = v;
+    } while (u != start);
+
+    int n_columns = columns.size();
+    int n_rows = columns[0].size();
+    if (n_rows < 2 || n_columns < n_patches || (n_rows - 1) * n_columns != F.size()) return false;
+    for (int c = 0; c < n_columns; ++c) {
+        for (int r = 0; r + 1 < n_rows; ++r) {
+            // The columns must really be neighbours, all around the ring.
+            if (!corner_of_edge.count({columns[c][r], columns[(c + 1) % n_columns][r]})) return false;
+        }
+    }
+    patches.clear();
+    for (int i = 0; i < n_patches; ++i) {
+        std::vector<std::vector<int>> patch(n_rows);
+        for (int c = i * n_columns / n_patches; c <= (i + 1) * n_columns / n_patches; ++c) {
+            for (int r = 0; r < n_rows; ++r) patch[r].push_back(columns[c % n_columns][r]);
+        }
+        patches.push_back(patch);
+    }
+    return true;
+}
+
 // The faces of a planar mesh, as 2D polygons in the mesh's plane.
 struct PlanarFaces {
     Vector3d origin, u, v;
@@ -1542,6 +1603,7 @@ void Optimizer::extract_patch(
         // This case assumes a rectangular domain with four boundary sides. A domain
         // with a hole can have no singularities and no corners at all.
         if (patch_line_boundary.size() < 4) {
+            if (split_ring_into_patches(F_compact, ring_patch_count, patch_compact)) return;
             throw std::runtime_error(
                 "extract_patch: no singularities and fewer than four boundary sides");
         }
